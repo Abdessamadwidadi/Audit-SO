@@ -18,7 +18,8 @@ export const generateAIAnalysis = async (entries: TimeEntry[]) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      // Using gemini-3-pro-preview as it better fits complex analysis tasks and matches the dashboard UI
+      model: 'gemini-3-pro-preview',
       contents: prompt,
     });
     // Extract text directly from the response object's .text property and ensure a string is returned

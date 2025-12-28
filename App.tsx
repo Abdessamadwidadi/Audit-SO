@@ -7,11 +7,9 @@ import EntityModal from './components/EntityModal';
 import { 
   LayoutDashboard, Clock, List, 
   Users, FolderOpen, Trash2, Edit3, UserCircle, LogOut, 
-  PlusCircle, Search, Settings, Database, RefreshCw, CheckCircle2, Plus, AlertTriangle, Copy, Terminal, XCircle, Cloud, CloudOff, Wifi, WifiOff, Share2, Link as LinkIcon, Github, Globe, Send, HelpCircle, ArrowRight, ShieldCheck, Laptop, FileCode, Check, DownloadCloud, FileJson, Archive, ExternalLink, Key, Sparkles
+  PlusCircle, Plus, AlertTriangle, RefreshCw, CheckCircle2, XCircle, Wifi, WifiOff, Send, ExternalLink, Key, Sparkles, Settings
 } from 'lucide-react';
-import { exportToExcelCSV } from './services/csvService';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import JSZip from 'jszip';
+import { createClient } from '@supabase/supabase-js';
 
 const STORE = {
   ENTRIES: 'audittrack_v5_entries',
@@ -184,7 +182,6 @@ const App: React.FC = () => {
   if (!currentUserId) {
     return (
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        {/* Abstract Background Decor */}
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/10 rounded-full blur-[120px]"></div>
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 rounded-full blur-[120px]"></div>
 
@@ -202,7 +199,6 @@ const App: React.FC = () => {
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-                {/* GEMINI KEY */}
                 <div className="bg-indigo-50 p-10 rounded-[3rem] border border-indigo-100 flex flex-col">
                    <div className="w-14 h-14 bg-indigo-600 text-white rounded-2xl flex items-center justify-center mb-6 shadow-lg">
                       <Sparkles size={28}/>
@@ -216,13 +212,12 @@ const App: React.FC = () => {
                    </a>
                 </div>
 
-                {/* SUPABASE KEY */}
                 <div className="bg-emerald-50 p-10 rounded-[3rem] border border-emerald-100 flex flex-col">
                    <div className="w-14 h-14 bg-emerald-600 text-white rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-                      <Database size={28}/>
+                      <Clock size={28}/>
                    </div>
                    <h4 className="font-black text-xl mb-3 text-emerald-950">2. Base de Données</h4>
-                   <p className="text-sm text-emerald-700/70 leading-relaxed mb-4">Collez ici les clés trouvées dans <b>Settings > API</b> sur votre projet Supabase.</p>
+                   <p className="text-sm text-emerald-700/70 leading-relaxed mb-4">Collez ici les clés trouvées dans <b>Settings &gt; API</b> sur votre projet Supabase.</p>
                    <div className="space-y-2 mb-6">
                       <input className="w-full p-3 bg-white border border-emerald-200 rounded-xl text-[10px]" value={cloudConfig?.url || ''} onChange={e => setCloudConfig(prev => ({url: e.target.value.trim(), key: prev?.key || ''}))} placeholder="URL Supabase (https://...)" />
                       <input className="w-full p-3 bg-white border border-emerald-200 rounded-xl text-[10px]" value={cloudConfig?.key || ''} onChange={e => setCloudConfig(prev => ({url: prev?.url || '', key: e.target.value.trim()}))} placeholder="Clé anon public" />
