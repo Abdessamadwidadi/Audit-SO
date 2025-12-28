@@ -1,6 +1,5 @@
-
 {
-  "name": "audittrack-gestion-temps",
+  "name": "audittrack_management",
   "private": true,
   "version": "1.0.0",
   "type": "module",
