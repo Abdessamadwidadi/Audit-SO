@@ -6,13 +6,20 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Vite ne définit pas process.env par défaut pour le navigateur.
-    // Cette ligne permet à l'application de lire la clé API_KEY configurée sur Vercel.
+    // Cette configuration est cruciale pour que process.env.API_KEY 
+    // soit accessible dans vos fichiers .ts/.tsx sur Vercel.
     'process.env': process.env
   },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    sourcemap: false
-  }
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'recharts', 'lucide-react'],
+        },
+      },
+    },
+  },
 });
