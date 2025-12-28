@@ -1,0 +1,106 @@
+
+import React, { useState, useEffect } from 'react';
+import { X, Save, User, Briefcase, Hash, Calendar, Target } from 'lucide-react';
+import { ServiceType, UserRole, Collaborator, Folder } from '../types';
+
+interface Props {
+  type: 'collab' | 'folder';
+  initialData?: any;
+  onSave: (data: any) => void;
+  onClose: () => void;
+}
+
+const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) => {
+  const [formData, setFormData] = useState<any>(
+    type === 'collab' 
+      ? { name: '', department: ServiceType.AUDIT, hiringDate: new Date().toISOString().split('T')[0], role: UserRole.COLLABORATOR }
+      : { name: '', number: '', clientName: '', serviceType: ServiceType.AUDIT, budgetHours: 0 }
+  );
+
+  useEffect(() => {
+    // Si on a des données initiales (modification), on les charge
+    if (initialData) {
+      setFormData({ ...initialData });
+    }
+  }, [initialData]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // On renvoie l'objet complet incluant l'ID s'il existe
+    onSave(formData);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[250] p-4">
+      <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl animate-in zoom-in duration-200">
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 rounded-t-[2.5rem]">
+          <h3 className="text-xl font-black text-slate-800">
+            {initialData ? 'Modifier' : 'Ajouter'} {type === 'collab' ? 'Collaborateur' : 'Dossier'}
+          </h3>
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-red-500 transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-10 space-y-6">
+          {type === 'collab' ? (
+            <>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nom Complet</label>
+                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: Jean Dupont" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pôle</label>
+                  <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})}>
+                    {Object.values(ServiceType).map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Rôle</label>
+                  <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
+                    {Object.values(UserRole).map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Date d'embauche</label>
+                <input type="date" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.hiringDate} onChange={e => setFormData({...formData, hiringDate: e.target.value})} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Numéro de Dossier</label>
+                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} placeholder="Ex: 2024-001" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nom du Client / Dossier</label>
+                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: Société Holding" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Service</label>
+                  <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value})}>
+                    {Object.values(ServiceType).map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Budget (h)</label>
+                  <input type="number" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.budgetHours} onChange={e => setFormData({...formData, budgetHours: parseFloat(e.target.value)})} />
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="pt-6 flex gap-4">
+            <button type="button" onClick={onClose} className="flex-1 p-5 bg-slate-100 text-slate-600 font-black rounded-3xl uppercase tracking-widest text-xs">Annuler</button>
+            <button type="submit" className="flex-1 p-5 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest text-xs shadow-xl shadow-indigo-500/20">Enregistrer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default EntityModal;
