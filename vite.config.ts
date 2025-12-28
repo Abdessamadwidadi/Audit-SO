@@ -1,23 +1,24 @@
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Cette configuration est cruciale pour que process.env.API_KEY 
-    // soit accessible dans vos fichiers .ts/.tsx sur Vercel.
-    'process.env': process.env
+    // On injecte uniquement la clé API pour éviter les erreurs de mémoire circulaire
+    'process.env.API_KEY': JSON.stringify(process.env.API_KEY),
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production')
   },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: false,
+    // Augmente la limite pour supprimer l'avertissement jaune
+    chunkSizeWarningLimit: 2000,
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom', 'recharts', 'lucide-react'],
+          'react-vendor': ['react', 'react-dom'],
+          'ui-vendor': ['lucide-react', 'recharts'],
         },
       },
     },

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { TimeEntry, ServiceType, Collaborator, Folder, Notification, UserRole } from './types';
 import TimeEntryForm from './components/TimeEntryForm';
@@ -20,7 +19,7 @@ const STORE = {
 };
 
 const App: React.FC = () => {
-  const [currentUserId, setCurrentUserId] = useState<string | null>(localStorage.getItem(STORE.USER_ID));
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => localStorage.getItem(STORE.USER_ID));
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -40,10 +39,14 @@ const App: React.FC = () => {
           window.location.hash = '';
           return decoded;
         }
-      } catch (e) { console.error("Lien invalide"); }
+      } catch (e) { console.error("Lien cloud invalide"); }
     }
-    const saved = localStorage.getItem(STORE.CLOUD_CONFIG);
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem(STORE.CLOUD_CONFIG);
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
   });
 
   const supabase = useMemo(() => {
@@ -66,12 +69,16 @@ const App: React.FC = () => {
         if (fData) setFolders(fData || []);
         if (eData) setEntries(eData || []);
       } else {
-        const savedCollabs = localStorage.getItem(STORE.COLLABS);
-        const savedFolders = localStorage.getItem(STORE.FOLDERS);
-        const savedEntries = localStorage.getItem(STORE.ENTRIES);
-        setCollaborators(savedCollabs ? JSON.parse(savedCollabs) : [{ id: 'admin-1', name: 'Manager Cabinet', department: ServiceType.AUDIT, hiringDate: '2025-01-01', role: UserRole.ADMIN }]);
-        setFolders(savedFolders ? JSON.parse(savedFolders) : []);
-        setEntries(savedEntries ? JSON.parse(savedEntries) : []);
+        try {
+          const savedCollabs = localStorage.getItem(STORE.COLLABS);
+          const savedFolders = localStorage.getItem(STORE.FOLDERS);
+          const savedEntries = localStorage.getItem(STORE.ENTRIES);
+          setCollaborators(savedCollabs ? JSON.parse(savedCollabs) : [{ id: 'admin-1', name: 'Manager Cabinet', department: ServiceType.AUDIT, hiringDate: '2025-01-01', role: UserRole.ADMIN }]);
+          setFolders(savedFolders ? JSON.parse(savedFolders) : []);
+          setEntries(savedEntries ? JSON.parse(savedEntries) : []);
+        } catch (e) {
+          console.error("Erreur lecture localstorage", e);
+        }
       }
     } catch (err) { 
       console.error(err); 
