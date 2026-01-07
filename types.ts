@@ -29,6 +29,7 @@ export interface Collaborator {
   department: ServiceType;
   hiringDate: string;
   role: UserRole;
+  password?: string; // Ajout du mot de passe
 }
 
 export interface Folder {

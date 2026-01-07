@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, User, Briefcase, Hash, Calendar, Target } from 'lucide-react';
+import { X, Save, User, Briefcase, Hash, Calendar, Target, Shield } from 'lucide-react';
 import { ServiceType, UserRole, Collaborator, Folder } from '../types';
 
 interface Props {
@@ -13,12 +13,11 @@ interface Props {
 const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) => {
   const [formData, setFormData] = useState<any>(
     type === 'collab' 
-      ? { name: '', department: ServiceType.AUDIT, hiringDate: new Date().toISOString().split('T')[0], role: UserRole.COLLABORATOR }
+      ? { name: '', department: ServiceType.AUDIT, hiringDate: new Date().toISOString().split('T')[0], role: UserRole.COLLABORATOR, password: '' }
       : { name: '', number: '', clientName: '', serviceType: ServiceType.AUDIT, budgetHours: 0 }
   );
 
   useEffect(() => {
-    // Si on a des données initiales (modification), on les charge
     if (initialData) {
       setFormData({ ...initialData });
     }
@@ -26,7 +25,6 @@ const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) =>
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // On renvoie l'objet complet incluant l'ID s'il existe
     onSave(formData);
   };
 
@@ -48,6 +46,10 @@ const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) =>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nom Complet</label>
                 <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: Jean Dupont" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-1"><Shield size={10} /> Code d'accès (Password)</label>
+                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-center text-indigo-600 tracking-widest" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="0000" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -94,8 +96,8 @@ const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) =>
           )}
 
           <div className="pt-6 flex gap-4">
-            <button type="button" onClick={onClose} className="flex-1 p-5 bg-slate-100 text-slate-600 font-black rounded-3xl uppercase tracking-widest text-xs">Annuler</button>
-            <button type="submit" className="flex-1 p-5 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest text-xs shadow-xl shadow-indigo-500/20">Enregistrer</button>
+            <button type="button" onClick={onClose} className="flex-1 p-5 bg-slate-100 text-slate-600 font-black rounded-3xl uppercase tracking-widest text-[10px]">Annuler</button>
+            <button type="submit" className="flex-1 p-5 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest text-[10px] shadow-xl shadow-indigo-500/20">Sauvegarder</button>
           </div>
         </form>
       </div>
