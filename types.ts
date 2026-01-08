@@ -1,13 +1,12 @@
 
 export enum ServiceType {
   AUDIT = 'Audit',
-  EXPERTISE = 'Expertise',
-  JURIDIQUE = 'Juridique',
-  SOCIAL = 'Social'
+  EXPERTISE = 'Expertise'
 }
 
 export enum UserRole {
   ADMIN = 'Admin',
+  MANAGER = 'Manager',
   COLLABORATOR = 'Collaborateur'
 }
 
@@ -17,10 +16,8 @@ export const PREDEFINED_TASKS = [
   "Audit d'inventaire",
   "Rédaction de rapport",
   "Réunion client",
-  "Déplacement / Mission",
-  "Déclarations fiscales",
-  "Gestion juridique",
-  "Social / Paie"
+  "Mission terrain",
+  "Déclarations fiscales"
 ];
 
 export interface Collaborator {
@@ -29,7 +26,7 @@ export interface Collaborator {
   department: ServiceType;
   hiringDate: string;
   role: UserRole;
-  password?: string; // Ajout du mot de passe
+  password?: string;
 }
 
 export interface Folder {
@@ -52,11 +49,23 @@ export interface TimeEntry {
   duration: number;
   description: string;
   date: string;
+  isOvertime?: boolean;
 }
 
-export interface Notification {
+export interface TaskAssignment {
   id: string;
-  type: 'info' | 'warning' | 'success';
-  message: string;
-  timestamp: string;
+  title: string;
+  assignedToId: string;
+  assignedById: string;
+  pole: ServiceType;
+  deadline: string;
+  status: 'todo' | 'done';
+}
+
+export interface Attendance {
+  id: string;
+  collaboratorId: string;
+  date: string;
+  checkIn: string;
+  checkOut?: string;
 }

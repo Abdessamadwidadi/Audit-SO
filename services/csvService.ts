@@ -1,74 +1,43 @@
 
 import * as XLSX from 'xlsx';
 
-/**
- * Lit un fichier (Excel ou CSV) et retourne les données sous forme de tableau de tableaux.
- * Convertit automatiquement les objets Date de SheetJS en chaînes de caractères YYYY-MM-DD.
- */
-export const readExcelOrCSV = (file: File): Promise<any[][]> => {
+export const readExcel = (file: File): Promise<any[][]> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
     reader.onload = (e) => {
       try {
         const data = e.target?.result;
-        // cellDates: true permet de récupérer de vrais objets Date pour les cellules typées date dans Excel
         const workbook = XLSX.read(data, { type: 'binary', cellDates: true });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        
-        // On récupère les lignes sous forme de tableau de tableaux
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
         
-        // CRUCIAL : On transforme immédiatement les objets Date en chaînes YYYY-MM-DD 
-        // pour éviter l'erreur React #31 lors du rendu de l'aperçu ou du stockage.
         const cleanedRows = rawRows.map(row => 
           row.map(cell => {
-            if (cell instanceof Date) {
-              // On vérifie que la date est valide avant de la formater
-              if (!isNaN(cell.getTime())) {
-                return cell.toISOString().split('T')[0];
-              }
-              return "";
+            if (cell instanceof Date && !isNaN(cell.getTime())) {
+              return cell.toISOString().split('T')[0];
             }
             return cell;
           })
         );
-        
         resolve(cleanedRows);
-      } catch (err) {
-        reject(err);
-      }
+      } catch (err) { reject(err); }
     };
-
-    reader.onerror = (err) => reject(err);
+    reader.onerror = reject;
     reader.readAsBinaryString(file);
   });
 };
 
-export const exportToExcelCSV = (filename: string, rows: string[][]) => {
-  const BOM = '\uFEFF';
-  const content = rows.map(e => e.map(cell => `"${(cell || '').toString().replace(/"/g, '""')}"`).join(";")).join("\n");
-  const blob = new Blob([BOM + content], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement("a");
-  const url = URL.createObjectURL(blob);
-  link.setAttribute("href", url);
-  link.setAttribute("download", filename);
-  link.click();
+export const exportToExcel = (filename: string, data: any[][]) => {
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Données");
+  XLSX.writeFile(wb, `${filename}.xlsx`);
 };
 
 export const downloadTemplate = (type: 'collabs' | 'folders') => {
-  const templates = {
-    collabs: [
-      ["Nom Complet", "Departement", "Date Embauche (AAAA-MM-JJ)"],
-      ["Exemple Marc Audit", "Audit", "2024-01-01"],
-      ["Julie Expertise", "Expertise", "2023-06-15"]
-    ],
-    folders: [
-      ["Nom Dossier", "Numero", "Nom Client", "Service (Audit/Expertise)", "Budget Heures"],
-      ["Dossier XYZ", "2024-001", "Client XYZ", "Audit", "100"],
-      ["Dossier ABC", "2024-002", "Client ABC", "Expertise", "50"]
-    ]
-  };
-  exportToExcelCSV(`Modele_Import_${type}.csv`, templates[type]);
+  const data = type === 'collabs' 
+    ? [["Nom Complet", "Pôle (Audit/Expertise)", "Date Embauche (AAAA-MM-JJ)", "Rôle (Admin/Manager/Collaborateur)"], ["Jean Dupont", "Audit", "2025-01-01", "Collaborateur"]]
+    : [["Nom Dossier", "Numéro", "Client", "Pôle (Audit/Expertise)", "Budget Heures"], ["Mission Audit 2025", "AUD-01", "Client SARL", "Audit", "50"]];
+  
+  exportToExcel(`Modele_Import_${type}`, data);
 };
