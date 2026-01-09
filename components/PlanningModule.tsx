@@ -39,7 +39,8 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
     showNotif('success', 'Tâche enregistrée');
   };
 
-  const TaskCard = ({ t, showAssignee = false }: { t: TaskAssignment, showAssignee?: boolean }) => (
+  // Fix: Properly type TaskCard as a functional component to allow 'key' prop during mapping
+  const TaskCard: React.FC<{ t: TaskAssignment; showAssignee?: boolean }> = ({ t, showAssignee = false }) => (
     <div className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${t.status === 'done' ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200 shadow-sm hover:border-indigo-300'}`}>
       <div className="flex items-center gap-4">
         <button 

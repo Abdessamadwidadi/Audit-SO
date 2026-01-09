@@ -44,51 +44,51 @@ const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) =>
           {type === 'collab' ? (
             <>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Nom Complet</label>
+                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Nom Complet</label>
                 <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="OUIAM..." />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1 flex items-center gap-1"><Shield size={10} /> Code d'accès (Password)</label>
+                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Shield size={10} /> Code d'accès (Password)</label>
                 <input required className="w-full p-4 bg-slate-50 border border-indigo-200 rounded-2xl font-black text-center text-indigo-600 tracking-[0.5em] text-2xl outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="0000" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Pôle</label>
+                  <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Pôle</label>
                   <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})}>
                     {Object.values(ServiceType).map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Rôle</label>
+                  <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Rôle</label>
                   <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
                     {Object.values(UserRole).map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Date d'embauche</label>
+                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Date d'embauche</label>
                 <input type="date" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none" value={formData.hiringDate} onChange={e => setFormData({...formData, hiringDate: e.target.value})} />
               </div>
             </>
           ) : (
             <>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Numéro de Dossier</label>
+                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Numéro de Dossier</label>
                 <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} placeholder="Ex: 2024-001" />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Nom du Client / Dossier</label>
+                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Nom du Client / Dossier</label>
                 <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: Société Holding" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Service</label>
+                  <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Service / Pôle</label>
                   <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900" value={formData.serviceType} onChange={e => setFormData({...formData, serviceType: e.target.value})}>
                     {Object.values(ServiceType).map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Budget (h)</label>
+                  <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Budget (h)</label>
                   <input type="number" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-indigo-600 text-xl text-center" value={formData.budgetHours} onChange={e => setFormData({...formData, budgetHours: parseFloat(e.target.value)})} />
                 </div>
               </div>
@@ -96,8 +96,8 @@ const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) =>
           )}
 
           <div className="pt-6 flex gap-4">
-            <button type="button" onClick={onClose} className="flex-1 p-5 bg-slate-100 text-slate-700 font-black rounded-3xl uppercase tracking-widest text-[11px] hover:bg-slate-200 transition-all">Annuler</button>
-            <button type="submit" className="flex-1 p-5 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-600/30 hover:bg-slate-900 transition-all">Sauvegarder</button>
+            <button type="button" onClick={onClose} className="flex-1 p-5 bg-slate-100 text-slate-900 font-black rounded-3xl uppercase tracking-widest text-[11px] hover:bg-slate-200 transition-all">Annuler</button>
+            <button type="submit" className="flex-1 p-5 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-600/30 hover:bg-slate-900 transition-all flex items-center justify-center gap-2"><Save size={16}/> Sauvegarder</button>
           </div>
         </form>
       </div>

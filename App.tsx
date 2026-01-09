@@ -8,7 +8,7 @@ import ClockingModule from './components/ClockingModule';
 import PlanningModule from './components/PlanningModule';
 import { 
   LayoutDashboard, Clock, List, Users, FolderOpen, UserCircle, LogOut, 
-  PlusCircle, Loader2, Database, ShieldAlert, CheckCircle2, AlertCircle, RefreshCw, Search, Trash2, Download, Table
+  PlusCircle, Loader2, Search, Trash2, Download, Table, Edit3, Filter
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { exportToExcel } from './services/csvService';
@@ -29,6 +29,7 @@ const App: React.FC = () => {
   const [notif, setNotif] = useState<{type: 'success'|'error', msg: string} | null>(null);
   const [entityModal, setEntityModal] = useState<{type: 'collab' | 'folder', data?: any} | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterPole, setFilterPole] = useState<string>('all');
 
   const [loginStep, setLoginStep] = useState<'select' | 'password'>('select');
   const [selectedCollab, setSelectedCollab] = useState<Collaborator | null>(null);
@@ -70,6 +71,23 @@ const App: React.FC = () => {
 
   const isAdmin = currentUser?.role === UserRole.ADMIN;
   const isManager = currentUser?.role === UserRole.MANAGER;
+
+  // Dossiers visibles selon le pôle et rôle
+  const visibleFolders = useMemo(() => {
+    if (isAdmin || isManager) return folders;
+    return folders.filter(f => f.serviceType === currentUser?.department);
+  }, [folders, currentUser, isAdmin, isManager]);
+
+  const filteredFolders = useMemo(() => {
+    let list = visibleFolders;
+    if ((isAdmin || isManager) && filterPole !== 'all') {
+      list = list.filter(f => f.serviceType === filterPole);
+    }
+    return list.filter(f => 
+      f.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      f.number.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [visibleFolders, searchTerm, filterPole, isAdmin, isManager]);
 
   const handleLogout = () => {
     setCurrentUserId(null);
@@ -178,7 +196,7 @@ const App: React.FC = () => {
         </header>
 
         <div className="space-y-8">
-          {view === 'log' && <TimeEntryForm collaborators={collaborators} folders={folders} currentCollabId={currentUserId} existingEntries={entries} onAddEntry={async (d) => {
+          {view === 'log' && <TimeEntryForm collaborators={collaborators} folders={visibleFolders} currentCollabId={currentUserId} existingEntries={entries} onAddEntry={async (d) => {
              const f = folders.find(folder => folder.id === d.folderId);
              const { error } = await supabase.from('time_entries').insert([{ id: `e_${Date.now()}`, collaborator_id: currentUserId, collaborator_name: currentUser.name, folder_id: f?.id, folder_name: f?.name, folder_number: f?.number, duration: d.duration, date: d.date, description: d.description, is_overtime: d.isOvertime }]);
              if (!error) { showNotif('success', "Temps enregistré"); fetchData(); }
@@ -189,13 +207,13 @@ const App: React.FC = () => {
             <div className="bg-white rounded-[3rem] border border-slate-200 overflow-hidden shadow-xl shadow-slate-200/50 animate-in fade-in zoom-in duration-500">
                <div className="p-8 bg-slate-50 border-b flex justify-between items-center">
                   <div className="relative w-full max-w-md">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                    <input type="text" placeholder="Rechercher une saisie..." className="w-full pl-12 pr-6 py-3 bg-white border border-slate-200 rounded-xl font-medium text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-900" size={18}/>
+                    <input type="text" placeholder="Rechercher par dossier ou collab..." className="w-full pl-12 pr-6 py-3 bg-white border border-slate-200 rounded-xl font-medium text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                   </div>
                </div>
                <table className="w-full text-left">
                  <thead>
-                   <tr className="bg-slate-100 border-b text-[10px] font-black uppercase tracking-widest text-slate-600">
+                   <tr className="bg-slate-100 border-b text-[10px] font-black uppercase tracking-widest text-slate-900">
                      <th className="p-8">Date</th>
                      <th className="p-8">Collaborateur</th>
                      <th className="p-8">Dossier</th>
@@ -210,9 +228,9 @@ const App: React.FC = () => {
                        <td className="p-8 font-bold text-slate-900 text-sm">{e.date}</td>
                        <td className="p-8 font-bold text-indigo-900 text-sm">{e.collaboratorName}</td>
                        <td className="p-8 font-bold text-slate-700 text-sm">
-                         <span className="px-3 py-1 bg-slate-100 rounded-lg text-[10px] uppercase font-black">{e.folderNumber}</span> {e.folderName}
+                         <span className="px-3 py-1 bg-slate-100 rounded-lg text-[10px] uppercase font-black text-slate-900">{e.folderNumber}</span> {e.folderName}
                        </td>
-                       <td className="p-8 text-slate-600 text-sm max-w-md">{e.description}</td>
+                       <td className="p-8 text-slate-900 text-sm max-w-md">{e.description}</td>
                        <td className="p-8 text-center font-black text-indigo-600">{e.duration}h</td>
                        <td className="p-8 text-right">
                          <button onClick={() => handleDeletion(e.id, 'time_entries')} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
@@ -240,25 +258,52 @@ const App: React.FC = () => {
 
           {(view === 'folders' || view === 'collabs') && (
             <div className="bg-white rounded-[3rem] border border-slate-200 overflow-hidden shadow-xl">
-               <div className="p-8 bg-slate-50 border-b flex justify-between items-center">
-                  <input type="text" placeholder="Rechercher..." className="px-6 py-3 bg-white border rounded-xl font-medium text-slate-900 outline-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                  <button onClick={() => setEntityModal({type: view === 'folders' ? 'folder' : 'collab'})} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px]">+ Ajouter</button>
+               <div className="p-8 bg-slate-50 border-b flex flex-col md:flex-row gap-4 justify-between items-center">
+                  <div className="flex flex-wrap gap-4 items-center w-full md:w-auto">
+                    <div className="relative">
+                      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-900" size={18}/>
+                      <input type="text" placeholder={`Rechercher ${view === 'folders' ? 'un dossier' : 'un membre'}...`} className="pl-12 pr-6 py-3 bg-white border rounded-xl font-bold text-slate-900 outline-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    </div>
+                    {view === 'folders' && (isAdmin || isManager) && (
+                      <div className="flex items-center gap-2 bg-white border px-4 py-2 rounded-xl">
+                        <Filter size={14} className="text-indigo-600" />
+                        <select className="bg-transparent font-bold text-slate-900 outline-none text-xs uppercase" value={filterPole} onChange={e => setFilterPole(e.target.value)}>
+                          <option value="all">Tous les Pôles</option>
+                          <option value={ServiceType.AUDIT}>Audit</option>
+                          <option value={ServiceType.EXPERTISE}>Expertise</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => setEntityModal({type: view === 'folders' ? 'folder' : 'collab'})} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] shadow-lg shadow-indigo-200">+ Ajouter</button>
                </div>
               <table className="w-full text-left">
-                <thead><tr className="bg-slate-100 border-b text-[10px] font-black uppercase text-slate-600"><th className="p-8">Libellé</th><th className="p-8 text-right">Actions</th></tr></thead>
+                <thead><tr className="bg-slate-100 border-b text-[10px] font-black uppercase text-slate-900"><th className="p-8">{view === 'folders' ? 'Dossier' : 'Nom'}</th><th className="p-8">Détails</th><th className="p-8 text-right">Actions</th></tr></thead>
                 <tbody className="divide-y">
-                  {collaborators.map(c => view === 'collabs' && (
+                  {view === 'collabs' && collaborators.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase())).map(c => (
                     <tr key={c.id} className="hover:bg-slate-50/50">
                       <td className="p-8 font-black text-slate-900">{c.name}</td>
-                      <td className="p-8 text-right">
+                      <td className="p-8"><span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase">{c.department}</span></td>
+                      <td className="p-8 text-right flex justify-end gap-2">
+                         <button onClick={() => setEntityModal({type: 'collab', data: c})} className="p-3 text-slate-400 hover:text-indigo-600 rounded-xl transition-all"><Edit3 size={18}/></button>
                          <button onClick={() => handleDeletion(c.id, 'collaborators')} className="p-3 text-slate-300 hover:text-red-500 rounded-xl transition-all"><Trash2 size={18}/></button>
                       </td>
                     </tr>
                   ))}
-                  {folders.map(f => view === 'folders' && (
+                  {view === 'folders' && filteredFolders.map(f => (
                     <tr key={f.id} className="hover:bg-slate-50/50">
-                      <td className="p-8 font-black text-slate-900">{f.name}</td>
-                      <td className="p-8 text-right">
+                      <td className="p-8">
+                        <p className="font-black text-slate-900">{f.name}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">{f.number}</p>
+                      </td>
+                      <td className="p-8">
+                        <div className="flex gap-2">
+                          <span className="px-3 py-1 bg-slate-100 text-slate-900 rounded-lg text-[10px] font-black uppercase">{f.serviceType}</span>
+                          <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase">{f.budgetHours}h budget</span>
+                        </div>
+                      </td>
+                      <td className="p-8 text-right flex justify-end gap-2">
+                         <button onClick={() => setEntityModal({type: 'folder', data: f})} className="p-3 text-slate-400 hover:text-indigo-600 rounded-xl transition-all"><Edit3 size={18}/></button>
                          <button onClick={() => handleDeletion(f.id, 'folders')} className="p-3 text-slate-300 hover:text-red-500 rounded-xl transition-all"><Trash2 size={18}/></button>
                       </td>
                     </tr>
@@ -270,12 +315,13 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {entityModal && <EntityModal type={entityModal.type} onSave={async (data) => {
+      {entityModal && <EntityModal type={entityModal.type} initialData={entityModal.data} onSave={async (data) => {
         const payload = entityModal.type === 'collab' 
-          ? { id: `c_${Date.now()}`, name: data.name, department: data.department, role: data.role, password: data.password, hiring_date: data.hiringDate }
-          : { id: `f_${Date.now()}`, name: data.name, number: data.number, client_name: data.clientName, service_type: data.serviceType, budget_hours: data.budgetHours };
+          ? { id: data.id || `c_${Date.now()}`, name: data.name, department: data.department, role: data.role, password: data.password, hiring_date: data.hiringDate }
+          : { id: data.id || `f_${Date.now()}`, name: data.name, number: data.number, client_name: data.clientName, service_type: data.serviceType, budget_hours: data.budgetHours };
         const { error } = await supabase.from(entityModal.type === 'collab' ? 'collaborators' : 'folders').upsert([payload]);
         if (!error) { showNotif('success', "Enregistré"); setEntityModal(null); fetchData(); }
+        else showNotif('error', "Échec de l'enregistrement");
       }} onClose={() => setEntityModal(null)} />}
     </div>
   );
