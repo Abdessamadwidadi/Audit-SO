@@ -45,7 +45,7 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
     const day = d.getDay(); // 0 = Dimanche, 6 = Samedi
     const isWeekend = day === 0 || day === 6;
 
-    if (!checkIn) {
+    if (!checkIn || checkIn === "--:--") {
       return isWeekend ? "Repos" : "Absent";
     }
     
@@ -55,7 +55,8 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
     const checkMin = h * 60 + m;
     const planMin = ph * 60 + pm;
     
-    if (checkMin > planMin + 15) return "En retard";
+    // Marquer en retard si > 10 minutes après l'heure prévue
+    if (checkMin > planMin + 10) return "En retard";
     return "À temps";
   };
 
@@ -274,7 +275,7 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
                </thead>
                <tbody className="divide-y divide-slate-100">
                  {fullAttendanceGrid.map(item => (
-                    <tr key={item.id} className={`hover:bg-indigo-50/50 transition-colors group ${item.status === 'Absent' ? 'bg-rose-50/20' : item.status === 'Repos' ? 'bg-slate-50/10' : ''}`}>
+                    <tr key={item.id} className={`hover:bg-indigo-50/50 transition-colors group ${item.status === 'Absent' || item.status === 'En retard' ? 'bg-rose-50/20' : item.status === 'Repos' ? 'bg-slate-50/10' : ''}`}>
                       <td className="p-8 font-bold text-slate-900">{formatDateFR(item.date)}</td>
                       <td className="p-8 font-black text-slate-900 group-hover:text-indigo-600 transition-colors uppercase">{item.collabName}</td>
                       <td className="p-8 text-center font-black text-indigo-600 text-xl">{item.checkIn}</td>
