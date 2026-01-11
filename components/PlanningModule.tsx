@@ -59,7 +59,6 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
 
   const sortedTasks = useMemo(() => {
     const filtered = tasks.filter(t => {
-      // 1. Contexte (Moi/Reçues/Déléguées)
       const tId = String(t.assignedToId);
       const bId = String(t.assignedById);
       const cId = String(currentUser.id);
@@ -69,32 +68,22 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
       if (activeTab === 'delegated') matchContext = bId === cId && tId !== cId;
       if (!matchContext) return false;
 
-      // 2. Pôle
       if (isAdminOrManager && poleFilter !== 'all' && t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
-
-      // 3. Logique de carry-over (REPORT)
       if (showAllTasks) return true;
 
       const taskDateStr = t.deadline;
       const taskDate = new Date(taskDateStr);
       taskDate.setHours(12, 0, 0, 0);
-      
       const inThisWeek = taskDate >= currentWeek.start && taskDate <= currentWeek.end;
-      
-      // LOGIQUE : Si on regarde la semaine actuelle (offset 0), on affiche aussi tout ce qui est non fait du passé
       const isCarryOver = weekOffset === 0 && t.status === 'todo' && taskDateStr < getLocalISODate(currentWeek.start);
-
       return inThisWeek || isCarryOver;
     });
 
     return filtered.sort((a, b) => {
       const isCarryA = a.deadline < getLocalISODate(currentWeek.start) && a.status === 'todo';
       const isCarryB = b.deadline < getLocalISODate(currentWeek.start) && b.status === 'todo';
-      
-      // Les tâches reportées en premier
       if (isCarryA && !isCarryB) return -1;
       if (!isCarryA && isCarryB) return 1;
-      
       return a.deadline.localeCompare(b.deadline);
     });
   }, [tasks, activeTab, currentUser.id, currentWeek, poleFilter, isAdminOrManager, showAllTasks, weekOffset, todayStr]);
@@ -225,7 +214,7 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
                         {activeTab === 'received' ? team.find(c => String(c.id) === String(t.assignedById))?.name : team.find(c => String(c.id) === String(t.assignedToId))?.name}
                       </td>
                     )}
-                    <td className="p-5"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] uppercase ${t.pole === ServiceType.AUDIT ? 'bg-indigo-600 text-white' : 'bg-amber-600 text-white'}`}>{t.pole}</span></td>
+                    <td className="p-5"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] uppercase ${t.pole === ServiceType.AUDIT ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>{t.pole}</span></td>
                     <td className="p-5"><span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${URGENCY_MAP[t.urgency].bg} ${URGENCY_MAP[t.urgency].color}`}>{URGENCY_MAP[t.urgency].label}</span></td>
                     <td className="p-5 font-bold text-slate-700">{formatDateFR(t.deadline)}</td>
                     <td className="p-5 text-right">

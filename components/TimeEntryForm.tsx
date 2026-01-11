@@ -1,16 +1,17 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { TimeEntry, Collaborator, Folder, PREDEFINED_TASKS, ServiceType, UserRole } from '../types';
-import { Clock, Search, PlusCircle, ChevronRight, Briefcase } from 'lucide-react';
+import { Clock, Search, PlusCircle, ChevronRight, Briefcase, Plus } from 'lucide-react';
 
 interface Props {
   currentUser: Collaborator;
   folders: Folder[];
   onAddEntry: (entry: { folderId: string; duration: number; description: string; date: string; isOvertime: boolean }) => void;
+  onQuickFolderAdd: () => void;
   existingEntries: TimeEntry[];
 }
 
-const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, existingEntries }) => {
+const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, onQuickFolderAdd, existingEntries }) => {
   const [formData, setFormData] = useState({
     folderId: '',
     duration: 1,
@@ -20,7 +21,7 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, exis
   });
 
   const [folderSearch, setFolderSearch] = useState('');
-  const [poleFilter, setPoleFilter] = useState<string>('all');
+  const [poleFilter, setPoleFilter] = useState<string>(currentUser.department); // Par défaut le pôle de l'utilisateur
   const [dailyTotal, setDailyTotal] = useState(0);
   const [showHistorySuggestions, setShowHistorySuggestions] = useState(false);
 
@@ -37,18 +38,6 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, exis
     return workHistory.filter(h => h.toLowerCase().includes(formData.description.toLowerCase())).slice(0, 10);
   }, [workHistory, formData.description]);
 
-  const frequentFolders = useMemo(() => {
-    const counts: Record<string, number> = {};
-    existingEntries
-      .filter(e => String(e.collaboratorId) === String(currentUser.id))
-      .forEach(e => { counts[e.folderId] = (counts[e.folderId] || 0) + 1; });
-    
-    return folders
-      .filter(f => counts[f.id])
-      .sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0))
-      .slice(0, 4);
-  }, [folders, existingEntries, currentUser.id]);
-
   useEffect(() => {
     const total = existingEntries
       .filter(e => String(e.collaboratorId) === String(currentUser.id) && e.date === formData.date)
@@ -59,12 +48,14 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, exis
   const filteredResults = useMemo(() => {
     let list = folders;
     
-    // Restriction pour les collaborateurs : uniquement leur pôle
+    // Pour les collaborateurs, on force leur pôle
     if (currentUser.role === UserRole.COLLABORATOR) {
-      list = list.filter(f => f.serviceType?.toLowerCase() === currentUser.department?.toLowerCase());
-    } else if (isAdminOrManager && poleFilter !== 'all') {
-      // Pour les managers/admins, on utilise le filtre UI
-      list = list.filter(f => f.serviceType?.toLowerCase() === poleFilter.toLowerCase());
+      list = list.filter(f => f.serviceType.toLowerCase() === currentUser.department.toLowerCase());
+    } else {
+      // Pour les managers, on suit le filtre de l'onglet
+      if (poleFilter !== 'all') {
+        list = list.filter(f => f.serviceType.toLowerCase() === poleFilter.toLowerCase());
+      }
     }
     
     if (folderSearch.trim()) {
@@ -75,7 +66,7 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, exis
       );
     }
     return list;
-  }, [folders, folderSearch, poleFilter, isAdminOrManager, currentUser]);
+  }, [folders, folderSearch, poleFilter, currentUser]);
 
   const selectedFolder = useMemo(() => {
     return folders.find(f => f.id === formData.folderId);
@@ -98,16 +89,19 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, exis
           <p className="text-slate-400 font-bold text-[9px] uppercase tracking-widest mt-1">Management SO • {currentUser.name}</p>
         </div>
         <div className="flex items-center gap-4">
-          {isAdminOrManager && (
-            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-               {['all', 'Audit', 'Expertise'].map(p => (
-                 <button key={p} type="button" onClick={() => setPoleFilter(p)} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${poleFilter === p ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400'}`}>{p === 'all' ? 'Cabinet' : p}</button>
-               ))}
-            </div>
-          )}
-          <div className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase flex items-center gap-3 border transition-all ${dailyTotal >= 8 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+             {/* Le collaborateur ne peut voir que son pôle, les managers peuvent changer */}
+             {isAdminOrManager ? (
+               ['Audit', 'Expertise'].map(p => (
+                 <button key={p} type="button" onClick={() => setPoleFilter(p)} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${poleFilter === p ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400'}`}>{p}</button>
+               ))
+             ) : (
+               <div className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase shadow-sm">{currentUser.department}</div>
+             )}
+          </div>
+          <div className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase flex items-center gap-3 border transition-all ${dailyTotal >= 7 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
             <Clock size={14}/> 
-            {dailyTotal}h saisies pour le {new Date(formData.date).toLocaleDateString('fr-FR')}
+            {dailyTotal}h / 7h (Objectif journalier)
           </div>
         </div>
       </div>
@@ -116,7 +110,12 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, exis
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-7 space-y-4">
             <div className="flex justify-between items-end px-1">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Choisir un dossier client ({currentUser.role === UserRole.COLLABORATOR ? currentUser.department : 'Tout'})</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Dossier client</label>
+              {!formData.folderId && isAdminOrManager && (
+                <button type="button" onClick={onQuickFolderAdd} className="text-[9px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1 hover:text-slate-900 transition-colors">
+                  <Plus size={12}/> Créer nouveau dossier
+                </button>
+              )}
             </div>
 
             {!formData.folderId ? (
@@ -146,8 +145,11 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, exis
                   ))}
                   
                   {filteredResults.length === 0 && (
-                    <div className="p-8 text-center text-slate-400 text-[10px] font-bold uppercase tracking-widest italic">
-                      {folderSearch ? "Aucun dossier ne correspond." : "Aucun dossier disponible."}
+                    <div className="p-10 flex flex-col items-center justify-center text-center space-y-4">
+                      <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest italic">Aucun dossier trouvé pour {poleFilter}</p>
+                      {isAdminOrManager && (
+                        <button type="button" onClick={onQuickFolderAdd} className="px-6 py-2 bg-indigo-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest shadow-md flex items-center gap-2 hover:bg-slate-900 transition-all"><Plus size={14}/> Créer "{folderSearch}"</button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -166,15 +168,6 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, exis
                 <button type="button" onClick={() => setFormData({...formData, folderId: ''})} className="px-5 py-2.5 bg-white/10 hover:bg-white/20 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all">Changer</button>
               </div>
             )}
-
-            {!formData.folderId && frequentFolders.length > 0 && (
-              <div className="pt-4 flex flex-wrap gap-2">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center mr-2">Habituels :</span>
-                {frequentFolders.map(f => (
-                  <button key={f.id} type="button" onClick={() => setFormData({...formData, folderId: f.id})} className="px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-[9px] font-black text-slate-600 hover:bg-indigo-600 hover:text-white transition-all uppercase">{f.name}</button>
-                ))}
-              </div>
-            )}
           </div>
 
           <div className="lg:col-span-5 space-y-6">
@@ -184,16 +177,16 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, exis
             </div>
 
             <div className="space-y-1.5 relative">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Travaux effectués</label>
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Travaux réalisés</label>
               <div className="relative">
                 <textarea 
-                  required rows={4} className="w-full p-5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs placeholder:text-slate-300 outline-none focus:border-indigo-500 transition-all" 
-                  placeholder="Décrivez brièvement votre mission..." value={formData.description} onFocus={() => setShowHistorySuggestions(true)} 
+                  required rows={4} className="w-full p-5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs outline-none focus:border-indigo-500 transition-all" 
+                  placeholder="Détaillez votre mission..." value={formData.description} onFocus={() => setShowHistorySuggestions(true)} 
                   onChange={e => setFormData({...formData, description: e.target.value})} 
                 />
                 {showHistorySuggestions && filteredHistory.length > 0 && (
                   <div className="absolute bottom-full left-0 w-full bg-white border border-slate-200 shadow-2xl rounded-2xl mb-2 z-50 max-h-[180px] overflow-y-auto">
-                    <div className="p-3 bg-slate-50 border-b text-[9px] font-black uppercase text-slate-400 tracking-widest">Derniers travaux</div>
+                    <div className="p-3 bg-slate-50 border-b text-[9px] font-black uppercase text-slate-400 tracking-widest">Historique travaux</div>
                     {filteredHistory.map((h, i) => (
                       <button key={i} type="button" onClick={() => { setFormData({...formData, description: h}); setShowHistorySuggestions(false); }} className="w-full text-left p-4 hover:bg-indigo-50 text-[11px] font-bold text-slate-700 border-b border-slate-50 last:border-0 transition-colors">{h}</button>
                     ))}

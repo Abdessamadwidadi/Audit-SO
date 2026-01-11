@@ -26,6 +26,7 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
   const totalHours = filteredEntries.reduce((sum, e) => sum + e.duration, 0);
 
   const budgetData = useMemo(() => {
+    // On veut afficher TOUS les dossiers filtrés par pôle, même sans heures
     return folders
       .filter(f => !poleFilter || poleFilter === 'all' || f.serviceType?.toLowerCase() === poleFilter.toLowerCase())
       .map(f => {
@@ -134,8 +135,8 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
                   <tr>
                     <th className="p-6">Dossier</th>
                     <th className="p-6">Numéro</th>
-                    <th className="p-6">Budget</th>
-                    <th className="p-6">Consommé</th>
+                    <th className="p-6 text-center">Budget</th>
+                    <th className="p-6 text-center">Consommé</th>
                     <th className="p-6">Progression</th>
                     <th className="p-6 text-right">Statut</th>
                   </tr>
@@ -145,9 +146,9 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
                     <tr key={f.id} className="hover:bg-indigo-50/20 transition-colors">
                       <td className="p-6 font-bold text-slate-900">{f.name}</td>
                       <td className="p-6 font-black text-indigo-600/40 text-xs">{f.number}</td>
-                      <td className="p-6 font-black text-indigo-600">{f.budget}h</td>
-                      <td className="p-6 font-black text-slate-900">{f.consumed}h</td>
-                      <td className="p-6">
+                      <td className="p-6 text-center font-black text-indigo-600">{f.budget}h</td>
+                      <td className="p-6 text-center font-black text-slate-900">{f.consumed}h</td>
+                      <td className="p-6 min-w-[200px]">
                         <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                           <div 
                             className={`h-full transition-all duration-1000 ${f.percent > 90 ? 'bg-rose-500' : 'bg-indigo-600'}`} 
@@ -158,7 +159,7 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
                       </td>
                       <td className="p-6 text-right">
                          <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${f.percent > 90 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                           {f.percent > 90 ? 'Attention' : 'OK'}
+                           {f.percent > 90 ? 'Alerte' : 'OK'}
                          </span>
                       </td>
                     </tr>
@@ -166,7 +167,7 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
                 </tbody>
               </table>
             ) : (
-              <div className="p-20 text-center text-slate-300 font-black uppercase tracking-widest italic">Aucun dossier à afficher</div>
+              <div className="p-20 text-center text-slate-300 font-black uppercase tracking-widest italic">Aucun dossier à afficher pour {poleFilter}</div>
             )}
           </div>
         </div>
@@ -242,7 +243,7 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
            </div>
            <div className="p-12 min-h-[400px]">
               {aiAnalysis ? (
-                <div className="bg-slate-50 p-10 rounded-[2.5rem] border border-slate-100 whitespace-pre-wrap text-slate-700 font-bold text-sm leading-relaxed animate-in fade-in duration-700">
+                <div className="bg-slate-50 p-10 rounded-[2.5rem] border border-slate-100 whitespace-pre-wrap text-slate-700 font-bold text-sm leading-relaxed animate-in fade-in duration-700 text-slate-900">
                   {aiAnalysis}
                 </div>
               ) : (
