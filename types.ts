@@ -10,6 +10,8 @@ export enum UserRole {
   COLLABORATOR = 'Collaborateur'
 }
 
+export type TaskUrgency = 'normal' | 'urgent' | 'critique';
+
 export const PREDEFINED_TASKS = [
   "Révision comptable",
   "Pointage de banque",
@@ -27,6 +29,8 @@ export interface Collaborator {
   hiringDate: string;
   role: UserRole;
   password?: string;
+  startTime: string; // Format "HH:mm"
+  endTime: string;   // Format "HH:mm"
 }
 
 export interface Folder {
@@ -57,9 +61,10 @@ export interface TaskAssignment {
   title: string;
   assignedToId: string;
   assignedById: string;
-  pole: ServiceType;
+  pole: string;
   deadline: string;
   status: 'todo' | 'done';
+  urgency: TaskUrgency;
 }
 
 export interface Attendance {

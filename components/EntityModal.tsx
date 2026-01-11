@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, User, Briefcase, Hash, Calendar, Target, Shield } from 'lucide-react';
+import { X, Save, User, Briefcase, Hash, Calendar, Target, Shield, Timer } from 'lucide-react';
 import { ServiceType, UserRole, Collaborator, Folder } from '../types';
 
 interface Props {
@@ -13,7 +13,7 @@ interface Props {
 const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) => {
   const [formData, setFormData] = useState<any>(
     type === 'collab' 
-      ? { name: '', department: ServiceType.AUDIT, hiringDate: new Date().toISOString().split('T')[0], role: UserRole.COLLABORATOR, password: '' }
+      ? { name: '', department: ServiceType.AUDIT, hiringDate: new Date().toISOString().split('T')[0], role: UserRole.COLLABORATOR, password: '', startTime: '09:00', endTime: '18:00' }
       : { name: '', number: '', clientName: '', serviceType: ServiceType.AUDIT, budgetHours: 0 }
   );
 
@@ -22,6 +22,13 @@ const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) =>
       setFormData({ ...initialData });
     }
   }, [initialData]);
+
+  const handleScheduleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const [start, end] = e.target.value.split('-');
+    setFormData({ ...formData, startTime: start, endTime: end });
+  };
+
+  const currentSchedule = `${formData.startTime}-${formData.endTime}`;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,6 +58,15 @@ const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) =>
                 <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Shield size={10} /> Code d'accès (Password)</label>
                 <input required className="w-full p-4 bg-slate-50 border border-indigo-200 rounded-2xl font-black text-center text-indigo-600 tracking-[0.5em] text-2xl outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="0000" />
               </div>
+              
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Timer size={10} /> Planning Horaire (Pause 1h30)</label>
+                <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none" value={currentSchedule} onChange={handleScheduleChange}>
+                  <option value="08:00-17:00">08:00 à 17:00</option>
+                  <option value="09:00-18:00">09:00 à 18:00</option>
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Pôle</label>

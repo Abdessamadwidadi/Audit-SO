@@ -1,126 +1,228 @@
 
-import React, { useState } from 'react';
-import { Plus, CheckCircle2, Calendar, Send, Loader2, Trash2, User, UserCheck, Star, Briefcase } from 'lucide-react';
-import { TaskAssignment, Collaborator, UserRole } from '../types';
+import React, { useState, useMemo } from 'react';
+import { Plus, CheckCircle2, Calendar, Loader2, Trash2, User, ChevronLeft, ChevronRight, ClipboardList, Inbox, ExternalLink, Briefcase, PlusCircle, AlertCircle, RotateCw, History, Eye, EyeOff } from 'lucide-react';
+import { TaskAssignment, Collaborator, UserRole, ServiceType, TaskUrgency } from '../types';
+import { formatDateFR } from '../App';
+
+const URGENCY_MAP: Record<TaskUrgency, {label: string, color: string, bg: string}> = {
+  normal: { label: 'Normal', color: 'text-slate-500', bg: 'bg-slate-100' },
+  urgent: { label: 'Urgent', color: 'text-amber-600', bg: 'bg-amber-100' },
+  critique: { label: 'Critique', color: 'text-rose-600', bg: 'bg-rose-100' }
+};
 
 interface Props {
   currentUser: Collaborator;
   tasks: TaskAssignment[];
   team: Collaborator[];
   onAddTask: (task: Partial<TaskAssignment>) => Promise<void>;
-  onUpdateTask: (id: string, status: 'todo' | 'done') => Promise<void>;
+  onUpdateTask: (id: string, updates: Partial<TaskAssignment>) => Promise<void>;
   onDeleteTask: (id: string) => Promise<void>;
-  // Fix: Added showNotif to Props
   showNotif: (type: 'success' | 'error', msg: string) => void;
+  poleFilter?: string;
 }
 
-// Fix: Destructured showNotif from Props
-const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, onUpdateTask, onDeleteTask, showNotif }) => {
-  const [taskTitle, setTaskTitle] = useState('');
-  const [assigneeId, setAssigneeId] = useState(currentUser?.id || '');
+const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, onUpdateTask, onDeleteTask, showNotif, poleFilter = 'all' }) => {
+  const [activeTab, setActiveTab] = useState<'mine' | 'received' | 'delegated'>('mine');
+  const [title, setTitle] = useState('');
+  const [assigneeId, setAssigneeId] = useState(currentUser.id);
+  const [taskPole, setTaskPole] = useState<string>(currentUser.department);
+  const [urgency, setUrgency] = useState<TaskUrgency>('normal');
   const [deadline, setDeadline] = useState(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'perso' | 'assigned' | 'given'>('perso');
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [showAllTasks, setShowAllTasks] = useState(false);
 
-  const isAdminOrManager = currentUser.role !== UserRole.COLLABORATOR;
+  const isAdminOrManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER;
 
-  // Filtrage intelligent
-  const personalTasks = tasks.filter(t => String(t.assignedToId) === String(currentUser.id) && String(t.assignedById) === String(currentUser.id));
-  const tasksForMe = tasks.filter(t => String(t.assignedToId) === String(currentUser.id) && String(t.assignedById) !== String(currentUser.id));
-  const tasksIGave = tasks.filter(t => String(t.assignedById) === String(currentUser.id) && String(t.assignedToId) !== String(currentUser.id));
+  const currentWeek = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(now.getDate() - (now.getDay() || 7) + 1 + (weekOffset * 7));
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return { start, end };
+  }, [weekOffset]);
 
-  const handleAdd = async () => {
-    if (!taskTitle) return;
-    setLoading(true);
-    await onAddTask({ title: taskTitle, assignedToId: assigneeId, deadline });
-    setTaskTitle('');
-    setLoading(false);
-    // Fix: showNotif is now available from props
-    showNotif('success', 'Tâche enregistrée');
+  const filteredTasks = useMemo(() => tasks.filter(t => {
+    const taskDateStr = t.deadline;
+    const taskDate = new Date(taskDateStr);
+    const now = new Date();
+    
+    // Logique de retard : après 18h le jour de l'échéance ou jours passés
+    const deadline18h = new Date(taskDateStr);
+    deadline18h.setHours(18, 0, 0, 0);
+    const isLate = now > deadline18h && t.status === 'todo';
+    
+    if (!showAllTasks) {
+      const inWeek = taskDate >= currentWeek.start && taskDate <= currentWeek.end;
+      if (!inWeek && !isLate) return false;
+    }
+    
+    if (isAdminOrManager && poleFilter !== 'all') {
+      if (t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
+    }
+
+    if (activeTab === 'mine') return String(t.assignedToId) === String(currentUser.id) && String(t.assignedById) === String(currentUser.id);
+    if (activeTab === 'received') return String(t.assignedToId) === String(currentUser.id) && String(t.assignedById) !== String(currentUser.id);
+    if (activeTab === 'delegated') return String(t.assignedById) === String(currentUser.id) && String(t.assignedToId) !== String(currentUser.id);
+    return false;
+  }), [tasks, activeTab, currentUser.id, currentWeek, poleFilter, isAdminOrManager, showAllTasks]);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!title.trim()) return; setLoading(true);
+    try {
+      await onAddTask({ title: title.trim(), assignedToId: isAdminOrManager ? assigneeId : currentUser.id, deadline, pole: isAdminOrManager ? taskPole : currentUser.department, urgency });
+      setTitle(''); showNotif('success', "Tâche ajoutée");
+    } finally { setLoading(false); }
   };
 
-  // Fix: Properly type TaskCard as a functional component to allow 'key' prop during mapping
-  const TaskCard: React.FC<{ t: TaskAssignment; showAssignee?: boolean }> = ({ t, showAssignee = false }) => (
-    <div className={`p-6 rounded-2xl border transition-all flex items-center justify-between group ${t.status === 'done' ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200 shadow-sm hover:border-indigo-300'}`}>
-      <div className="flex items-center gap-4">
-        <button 
-          onClick={() => onUpdateTask(t.id, t.status === 'todo' ? 'done' : 'todo')} 
-          className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center transition-all ${t.status === 'done' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-200 hover:border-indigo-500 text-transparent'}`}
-        >
-          <CheckCircle2 size={20} className={t.status === 'done' ? 'opacity-100' : 'opacity-0'} />
-        </button>
-        <div>
-          <p className={`font-black text-sm ${t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{t.title}</p>
-          <div className="flex gap-4 mt-1">
-            <span className="text-[10px] font-black text-slate-400 uppercase flex items-center gap-1"><Calendar size={12}/> {t.deadline}</span>
-            {showAssignee && (
-               <span className="text-[10px] font-black text-indigo-500 uppercase flex items-center gap-1">
-                 <User size={12}/> {team.find(c => String(c.id) === String(t.assignedToId))?.name || 'Inconnu'}
-               </span>
-            )}
-          </div>
-        </div>
-      </div>
-      <button onClick={() => onDeleteTask(t.id)} className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18}/></button>
-    </div>
-  );
+  const handleReport = async (id: string) => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    await onUpdateTask(id, { deadline: todayStr });
+    showNotif('success', "Tâche reportée à aujourd'hui");
+  };
+
+  const handleBulkReport = async () => {
+    const now = new Date();
+    const lates = filteredTasks.filter(t => {
+      const d = new Date(t.deadline);
+      d.setHours(18,0,0,0);
+      return now > d && t.status === 'todo';
+    });
+    if (lates.length === 0) return;
+    const todayStr = now.toISOString().split('T')[0];
+    for (const t of lates) {
+      await onUpdateTask(t.id, { deadline: todayStr });
+    }
+    showNotif('success', `${lates.length} tâches reportées`);
+  };
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700">
-      {/* Création */}
-      <div className="bg-white p-10 rounded-[3rem] border border-slate-200 shadow-xl shadow-slate-200/50">
-        <h3 className="text-xl font-black mb-8 flex items-center gap-3 uppercase tracking-tighter text-slate-900">
-           <Send size={20} className="text-indigo-600"/> Nouvelle Mission / Tâche
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <input type="text" placeholder="Description..." className="md:col-span-2 p-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={taskTitle} onChange={e => setTaskTitle(e.target.value)} />
-          <div className="space-y-1">
-            <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Pour qui ?</label>
-            <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
-              {team.map(c => <option key={c.id} value={c.id}>{c.id === currentUser.id ? 'Moi-même' : c.name}</option>)}
+    <div className="space-y-8 animate-in fade-in duration-700">
+      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/40">
+        <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+          <div className="md:col-span-4 space-y-1.5">
+            <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Travaux / Mission</label>
+            <input type="text" placeholder="Description de la mission..." className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px] outline-none focus:border-indigo-500 transition-all" value={title} onChange={e => setTitle(e.target.value)} />
+          </div>
+          <div className="md:col-span-2 space-y-1.5">
+            <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Urgence</label>
+            <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px] outline-none" value={urgency} onChange={e => setUrgency(e.target.value as any)}>
+              <option value="normal">Normale</option>
+              <option value="urgent">Urgente</option>
+              <option value="critique">Critique</option>
             </select>
           </div>
-          <button onClick={handleAdd} disabled={!taskTitle || loading} className="h-full bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-indigo-200 hover:bg-slate-900 transition-all flex items-center justify-center">
-            {loading ? <Loader2 className="animate-spin" size={20}/> : 'Ajouter'}
-          </button>
+          {isAdminOrManager && (
+            <div className="md:col-span-2 space-y-1.5">
+              <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Affectation</label>
+              <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px] outline-none" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
+                <option value={currentUser.id}>Moi-même</option>
+                {team.filter(c => c.id !== currentUser.id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div className={isAdminOrManager ? "md:col-span-2 space-y-1.5" : "md:col-span-3 space-y-1.5"}>
+            <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Échéance</label>
+            <input type="date" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px] outline-none" value={deadline} onChange={e => setDeadline(e.target.value)} />
+          </div>
+          <div className={isAdminOrManager ? "md:col-span-2" : "md:col-span-3"}>
+            <button type="submit" disabled={!title.trim() || loading} className="w-full h-12 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-indigo-100 hover:bg-slate-900 transition-all flex items-center justify-center gap-2">
+              {loading ? <Loader2 className="animate-spin" size={16}/> : <Plus size={16}/>} <span>Ajouter</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="flex bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm overflow-x-auto hide-scrollbar">
+          <button onClick={() => setActiveTab('mine')} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'mine' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}><ClipboardList size={14}/> Perso</button>
+          <button onClick={() => setActiveTab('received')} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'received' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}><Inbox size={14}/> Reçues</button>
+          {isAdminOrManager && <button onClick={() => setActiveTab('delegated')} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'delegated' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:bg-slate-50'}`}><ExternalLink size={14}/> Déléguées</button>}
         </div>
-        <div className="mt-4 flex items-center gap-4">
-           <span className="text-[10px] font-black uppercase text-slate-400 ml-2">Échéance :</span>
-           <input type="date" className="p-2 bg-slate-50 border rounded-xl font-bold text-xs text-slate-900" value={deadline} onChange={e => setDeadline(e.target.value)} />
+
+        <div className="flex items-center gap-4">
+           <button onClick={() => setShowAllTasks(!showAllTasks)} className={`px-5 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm border ${showAllTasks ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
+              {showAllTasks ? <Eye size={14}/> : <EyeOff size={14}/>} {showAllTasks ? 'Toutes mes tâches' : 'Vue Hebdo'}
+           </button>
+           
+           {!showAllTasks && (
+             <div className="flex items-center gap-4 bg-white px-6 py-2 rounded-2xl border border-slate-100 shadow-sm">
+               <button onClick={() => setWeekOffset(prev => prev - 1)} className="p-1 text-slate-400 hover:text-indigo-600 transition-all"><ChevronLeft size={18}/></button>
+               <div className="text-center min-w-[150px]"><p className="text-[10px] font-black text-slate-900">{formatDateFR(currentWeek.start.toISOString().split('T')[0])} au {formatDateFR(currentWeek.end.toISOString().split('T')[0])}</p></div>
+               <button onClick={() => setWeekOffset(prev => prev + 1)} className="p-1 text-slate-400 hover:text-indigo-600 transition-all"><ChevronRight size={18}/></button>
+             </div>
+           )}
+
+           {filteredTasks.some(t => { const d = new Date(t.deadline); d.setHours(18,0,0,0); return new Date() > d && t.status === 'todo'; }) && (
+             <button onClick={handleBulkReport} className="px-4 py-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all flex items-center gap-2 shadow-sm"><History size={14}/> Tout reporter</button>
+           )}
         </div>
       </div>
 
-      {/* Navigation Onglets */}
-      <div className="flex gap-4 p-2 bg-slate-200/50 rounded-3xl w-fit">
-        <button onClick={() => setActiveTab('perso')} className={`px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'perso' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Ma To-Do</button>
-        <button onClick={() => setActiveTab('assigned')} className={`px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'assigned' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Assigné par Cabinet</button>
-        {isAdminOrManager && (
-          <button onClick={() => setActiveTab('given')} className={`px-8 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${activeTab === 'given' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Missions Données</button>
-        )}
-      </div>
+      <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+              <tr>
+                <th className="p-5 w-16 text-center">Statut</th>
+                <th className="p-5">Travaux / Mission</th>
+                <th className="p-5">Pôle</th>
+                <th className="p-5">Urgence</th>
+                <th className="p-5">Échéance</th>
+                <th className="p-5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {filteredTasks.map(t => {
+                const now = new Date();
+                const d = new Date(t.deadline);
+                d.setHours(18,0,0,0);
+                const isLate = now > d && t.status === 'todo';
+                const urgency = URGENCY_MAP[t.urgency] || URGENCY_MAP.normal;
 
-      {/* Listes */}
-      <div className="space-y-6">
-        {activeTab === 'perso' && (
-          <div className="space-y-4">
-            <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2"><Star size={14} className="text-amber-500"/> Mes notes personnelles</h4>
-            {personalTasks.length > 0 ? personalTasks.map(t => <TaskCard key={t.id} t={t} />) : <p className="p-10 text-center text-slate-300 font-bold uppercase text-[10px] bg-white rounded-3xl border border-dashed">Aucune tâche perso</p>}
-          </div>
-        )}
-
-        {activeTab === 'assigned' && (
-          <div className="space-y-4">
-            <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2"><Briefcase size={14} className="text-indigo-500"/> Travaux confiés par le management</h4>
-            {tasksForMe.length > 0 ? tasksForMe.map(t => <TaskCard key={t.id} t={t} />) : <p className="p-10 text-center text-slate-300 font-bold uppercase text-[10px] bg-white rounded-3xl border border-dashed">Rien de prévu pour le moment</p>}
-          </div>
-        )}
-
-        {activeTab === 'given' && (
-          <div className="space-y-4">
-            <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2"><UserCheck size={14} className="text-emerald-500"/> Suivi des missions envoyées aux collaborateurs</h4>
-            {tasksIGave.length > 0 ? tasksIGave.map(t => <TaskCard key={t.id} t={t} showAssignee />) : <p className="p-10 text-center text-slate-300 font-bold uppercase text-[10px] bg-white rounded-3xl border border-dashed">Vous n'avez assigné aucune mission</p>}
-          </div>
-        )}
+                return (
+                  <tr key={t.id} className={`group text-[11px] transition-colors ${t.status === 'done' ? 'bg-slate-50/50 opacity-60' : isLate ? 'bg-rose-50/30' : 'hover:bg-indigo-50/20'}`}>
+                    <td className="p-5 text-center">
+                       <button onClick={() => onUpdateTask(t.id, { status: t.status === 'todo' ? 'done' : 'todo' })} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center mx-auto transition-all ${t.status === 'done' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-200 bg-white group-hover:border-indigo-400'}`}>
+                         {t.status === 'done' && <CheckCircle2 size={14} />}
+                       </button>
+                    </td>
+                    <td className="p-5">
+                       <p className={`font-black tracking-tight ${t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{t.title}</p>
+                    </td>
+                    <td className="p-5">
+                       <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded-md font-black text-[9px] uppercase">{t.pole}</span>
+                    </td>
+                    <td className="p-5">
+                       <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${urgency.bg} ${urgency.color}`}>{urgency.label}</span>
+                    </td>
+                    <td className="p-5 font-bold">
+                       <div className="flex flex-col">
+                          <span className={isLate ? 'text-rose-600' : 'text-slate-600'}>{formatDateFR(t.deadline)}</span>
+                          {isLate && <span className="text-[8px] font-black uppercase text-rose-500 flex items-center gap-1 mt-0.5 animate-pulse"><AlertCircle size={8}/> En retard</span>}
+                       </div>
+                    </td>
+                    <td className="p-5 text-right">
+                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                         {isLate && (
+                           <button onClick={() => handleReport(t.id)} title="Reporter à aujourd'hui" className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"><RotateCw size={14}/></button>
+                         )}
+                         <button onClick={() => onDeleteTask(t.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-all"><Trash2 size={14}/></button>
+                       </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {filteredTasks.length === 0 && (
+            <div className="p-20 text-center">
+              <ClipboardList size={40} className="mx-auto text-slate-100 mb-4" />
+              <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest italic">Aucune tâche disponible dans cette vue</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
