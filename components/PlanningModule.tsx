@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, CheckCircle2, Calendar, Loader2, Trash2, User, ChevronLeft, ChevronRight, ClipboardList, Inbox, ExternalLink, X, Edit3, Save, Clock, RotateCcw, AlertCircle } from 'lucide-react';
+import { Plus, CheckCircle2, Calendar, Loader2, Trash2, User, ChevronLeft, ChevronRight, ClipboardList, Inbox, ExternalLink, X, Edit3, Save, Clock, RotateCcw, AlertCircle, History } from 'lucide-react';
 import { TaskAssignment, Collaborator, UserRole, ServiceType, TaskUrgency } from '../types';
 import { formatDateFR } from '../App';
 
@@ -72,28 +72,30 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
       // 2. Pôle
       if (isAdminOrManager && poleFilter !== 'all' && t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
 
-      // 3. Logique d'affichage
+      // 3. Logique de carry-over (REPORT)
       if (showAllTasks) return true;
 
-      const taskDate = new Date(t.deadline);
+      const taskDateStr = t.deadline;
+      const taskDate = new Date(taskDateStr);
       taskDate.setHours(12, 0, 0, 0);
-      const inCurrentWeek = taskDate >= currentWeek.start && taskDate <= currentWeek.end;
       
-      // Report automatique : UNIQUEMENT quand on regarde la semaine actuelle (offset 0)
-      const isLateCarryOver = weekOffset === 0 && t.status === 'todo' && t.deadline < todayStr;
+      const inThisWeek = taskDate >= currentWeek.start && taskDate <= currentWeek.end;
+      
+      // LOGIQUE : Si on regarde la semaine actuelle (offset 0), on affiche aussi tout ce qui est non fait du passé
+      const isCarryOver = weekOffset === 0 && t.status === 'todo' && taskDateStr < getLocalISODate(currentWeek.start);
 
-      return inCurrentWeek || isLateCarryOver;
+      return inThisWeek || isCarryOver;
     });
 
     return filtered.sort((a, b) => {
-      const dateA = a.deadline;
-      const dateB = b.deadline;
-      const isLateA = a.status === 'todo' && dateA < todayStr;
-      const isLateB = b.status === 'todo' && dateB < todayStr;
-
-      if (isLateA && !isLateB) return -1;
-      if (!isLateA && isLateB) return 1;
-      return dateA.localeCompare(dateB);
+      const isCarryA = a.deadline < getLocalISODate(currentWeek.start) && a.status === 'todo';
+      const isCarryB = b.deadline < getLocalISODate(currentWeek.start) && b.status === 'todo';
+      
+      // Les tâches reportées en premier
+      if (isCarryA && !isCarryB) return -1;
+      if (!isCarryA && isCarryB) return 1;
+      
+      return a.deadline.localeCompare(b.deadline);
     });
   }, [tasks, activeTab, currentUser.id, currentWeek, poleFilter, isAdminOrManager, showAllTasks, weekOffset, todayStr]);
 
@@ -126,7 +128,7 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
     const current = new Date(task.deadline);
     current.setDate(current.getDate() + 7);
     await onUpdateTask(task.id, { deadline: getLocalISODate(current) });
-    showNotif('success', "Reporté de 7 jours");
+    showNotif('success', "Reporté à +7 jours");
   };
 
   return (
@@ -158,9 +160,9 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
 
       <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/40">
         <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-          <div className="md:col-span-4 space-y-1.5"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Nouvelle Mission</label><input type="text" placeholder="Description de la tâche..." className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px] outline-none focus:border-indigo-500 transition-all" value={title} onChange={e => setTitle(e.target.value)} /></div>
+          <div className="md:col-span-4 space-y-1.5"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Nouvelle Mission</label><input type="text" placeholder="Mission à accomplir..." className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px] outline-none focus:border-indigo-500 transition-all" value={title} onChange={e => setTitle(e.target.value)} /></div>
           <div className="md:col-span-2 space-y-1.5"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Urgence</label><select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px]" value={urgency} onChange={e => setUrgency(e.target.value as any)}><option value="normal">Normale</option><option value="urgent">Urgente</option><option value="critique">Critique</option></select></div>
-          {isAdminOrManager && <div className="md:col-span-2 space-y-1.5"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Assigner à</label><select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px]" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}><option value={currentUser.id}>Moi-même</option>{team.filter(c => String(c.id) !== String(currentUser.id)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
+          {isAdminOrManager && <div className="md:col-span-2 space-y-1.5"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Pour</label><select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px]" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}><option value={currentUser.id}>Moi</option>{team.filter(c => String(c.id) !== String(currentUser.id)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
           <div className={isAdminOrManager ? "md:col-span-2 space-y-1.5" : "md:col-span-3 space-y-1.5"}><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Échéance</label><input type="date" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px]" value={deadline} onChange={e => setDeadline(e.target.value)} /></div>
           <div className={isAdminOrManager ? "md:col-span-2" : "md:col-span-3"}><button type="submit" disabled={!title.trim() || loading} className="w-full h-12 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg flex items-center justify-center gap-2 hover:bg-slate-900 transition-all">{loading ? <Loader2 className="animate-spin" size={16}/> : <Plus size={16}/>} Ajouter</button></div>
         </form>
@@ -181,7 +183,7 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
                <button onClick={() => setWeekOffset(prev => prev + 1)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"><ChevronRight size={18}/></button>
              </div>
            ) : (
-             <div className="px-6 py-2.5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-sm">Planning Global Complet</div>
+             <div className="px-6 py-2.5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-sm">Planning Global</div>
            )}
            <button onClick={() => { setShowAllTasks(!showAllTasks); setWeekOffset(0); }} className={`px-5 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all shadow-sm border ${showAllTasks ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-100'}`}>{showAllTasks ? 'RETOUR VUE HEBDO' : 'VOIR TOUT LE PLANNING'}</button>
         </div>
@@ -195,10 +197,11 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
             </thead>
             <tbody className="divide-y divide-slate-50">
               {sortedTasks.map(t => {
-                const isLate = t.status === 'todo' && t.deadline < todayStr;
+                const isFromPast = t.deadline < getLocalISODate(currentWeek.start) && t.status === 'todo';
+                const isLateThisWeek = t.status === 'todo' && t.deadline < todayStr && !isFromPast;
 
                 return (
-                  <tr key={t.id} className={`group text-[11px] transition-all ${t.status === 'done' ? 'bg-slate-50/50 grayscale opacity-50' : isLate ? 'bg-rose-50/30' : 'hover:bg-indigo-50/20'}`}>
+                  <tr key={t.id} className={`group text-[11px] transition-all ${t.status === 'done' ? 'bg-slate-50/50 grayscale opacity-50' : (isFromPast || isLateThisWeek) ? 'bg-rose-50/30' : 'hover:bg-indigo-50/20'}`}>
                     <td className="p-5 text-center">
                       <button onClick={() => handleToggleStatus(t)} className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center mx-auto transition-all ${t.status === 'done' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-indigo-600'}`}>
                         {t.status === 'done' && <CheckCircle2 size={14} />}
@@ -206,9 +209,14 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
                     </td>
                     <td className="p-5">
                       <p className="font-black text-slate-900 uppercase tracking-tight">{t.title}</p>
-                      {isLate && (
+                      {isFromPast && (
                         <span className="text-[8px] font-black uppercase text-rose-600 bg-rose-100 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit mt-1">
-                          <AlertCircle size={8}/> EN RETARD (REPORTÉ)
+                          <History size={8}/> REPORTÉ AUTOMATIQUEMENT
+                        </span>
+                      )}
+                      {isLateThisWeek && (
+                        <span className="text-[8px] font-black uppercase text-rose-700 bg-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1 w-fit mt-1">
+                          <AlertCircle size={8}/> EN RETARD
                         </span>
                       )}
                     </td>
@@ -222,7 +230,7 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
                     <td className="p-5 font-bold text-slate-700">{formatDateFR(t.deadline)}</td>
                     <td className="p-5 text-right">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {t.status === 'todo' && <button onClick={() => handleQuickReport(t)} className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-600 hover:text-white transition-all shadow-sm"><RotateCcw size={14}/></button>}
+                        {t.status === 'todo' && <button onClick={() => handleQuickReport(t)} title="Reporter à +7 jours" className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-600 hover:text-white transition-all shadow-sm"><RotateCcw size={14}/></button>}
                         <button onClick={() => setEditTask(t)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"><Edit3 size={14}/></button>
                         <button onClick={() => onDeleteTask(t.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-all"><Trash2 size={14}/></button>
                       </div>
@@ -232,7 +240,7 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
               })}
             </tbody>
           </table>
-          {sortedTasks.length === 0 && <div className="p-20 text-center text-slate-300 uppercase text-[9px] font-black tracking-widest italic">Aucune mission enregistrée</div>}
+          {sortedTasks.length === 0 && <div className="p-20 text-center text-slate-300 uppercase text-[9px] font-black tracking-widest italic">Rien à signaler</div>}
         </div>
       </div>
     </div>

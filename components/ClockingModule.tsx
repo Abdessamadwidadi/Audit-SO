@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Clock, LogIn, LogOut, CheckCircle2, Loader2, Download, Activity, ShieldCheck, TrendingUp, Users, AlertTriangle, Timer, Info, User, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Clock, LogIn, LogOut, CheckCircle2, Loader2, Download, Activity, ShieldCheck, TrendingUp, Users, AlertTriangle, Timer, Info, User, ChevronLeft, ChevronRight, X, Edit3, Save, Calendar } from 'lucide-react';
 import { Attendance, Collaborator, UserRole } from '../types';
 import { formatDateFR } from '../App';
 
@@ -10,11 +10,12 @@ interface Props {
   attendance: Attendance[];
   onCheckIn: (time: string) => void;
   onCheckOut: (id: string, time: string) => void;
+  onUpdateAttendance?: (id: string, updates: Partial<Attendance>) => void;
   onExport?: (customData?: any[][]) => void;
   poleFilter: string;
 }
 
-const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendance, onCheckIn, onCheckOut, onExport, poleFilter }) => {
+const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendance, onCheckIn, onCheckOut, onUpdateAttendance, onExport, poleFilter }) => {
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'today' | 'history' | 'stats'>('today');
@@ -24,6 +25,8 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
   const [isAuthenticating, setIsAuthenticating] = useState<'in' | 'out' | null>(null);
   const [authCode, setAuthCode] = useState('');
   const [authError, setAuthError] = useState(false);
+
+  const [editingAttendance, setEditingAttendance] = useState<Attendance | null>(null);
 
   const today = new Date().toISOString().split('T')[0];
   const isAdminOrManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER;
@@ -63,6 +66,19 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
       setAuthError(true);
       setAuthCode('');
       setTimeout(() => setAuthError(false), 2000);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (editingAttendance && onUpdateAttendance) {
+      setLoading(true);
+      await onUpdateAttendance(editingAttendance.id, {
+        date: editingAttendance.date,
+        checkIn: editingAttendance.checkIn,
+        checkOut: editingAttendance.checkOut
+      });
+      setEditingAttendance(null);
+      setLoading(false);
     }
   };
 
@@ -122,6 +138,7 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-700 pb-20">
+      {/* Modal Authentification Pointage */}
       {isAuthenticating && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-xl flex items-center justify-center z-[500] p-4">
            <div className="bg-white rounded-[3rem] w-full max-w-sm p-12 text-center shadow-2xl animate-in zoom-in">
@@ -131,6 +148,46 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
               <div className="grid grid-cols-2 gap-4">
                  <button onClick={() => setIsAuthenticating(null)} className="p-5 bg-slate-100 rounded-3xl font-black text-[10px] uppercase tracking-widest text-slate-900">Retour</button>
                  <button onClick={handleAuthSubmit} className="p-5 bg-indigo-600 text-white rounded-3xl font-black text-[10px] uppercase tracking-widest shadow-xl">Valider</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Modal Modification Pointage (Manager) */}
+      {editingAttendance && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[500] p-4">
+           <div className="bg-white rounded-[3rem] w-full max-w-md p-10 shadow-2xl animate-in zoom-in overflow-hidden">
+              <div className="flex justify-between items-center mb-8">
+                 <div>
+                    <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Modifier Pointage</h3>
+                    <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest mt-1">Collab: {collaborators.find(c => String(c.id) === String(editingAttendance.collaboratorId))?.name}</p>
+                 </div>
+                 <button onClick={() => setEditingAttendance(null)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-600 rounded-2xl transition-all"><X size={20}/></button>
+              </div>
+              
+              <div className="space-y-6">
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Calendar size={12}/> Date du pointage</label>
+                    <input type="date" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none" value={editingAttendance.date} onChange={e => setEditingAttendance({...editingAttendance, date: e.target.value})} />
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Clock size={12}/> Arrivée</label>
+                       <input type="time" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-indigo-600 text-xl text-center outline-none" value={editingAttendance.checkIn} onChange={e => setEditingAttendance({...editingAttendance, checkIn: e.target.value})} />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Clock size={12}/> Départ</label>
+                       <input type="time" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-slate-900 text-xl text-center outline-none" value={editingAttendance.checkOut || ""} onChange={e => setEditingAttendance({...editingAttendance, checkOut: e.target.value})} />
+                    </div>
+                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mt-10">
+                 <button onClick={() => setEditingAttendance(null)} className="p-5 bg-slate-100 rounded-2xl font-black text-[10px] uppercase tracking-widest text-slate-900">Annuler</button>
+                 <button onClick={handleSaveEdit} disabled={loading} className="p-5 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl flex items-center justify-center gap-2 hover:bg-slate-900 transition-all">
+                    {loading ? <Loader2 className="animate-spin" size={16}/> : <Save size={16}/>}
+                    Enregistrer
+                 </button>
               </div>
            </div>
         </div>
@@ -208,11 +265,11 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
                   onClick={() => setShowOnlyMine(!showOnlyMine)} 
                   className={`px-6 py-3.5 rounded-2xl font-black text-[9px] uppercase tracking-widest transition-all border shadow-sm flex items-center gap-2 ${showOnlyMine ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}
                  >
-                   <User size={14}/> {showOnlyMine ? "MON POINTAGE PERSO" : "VOIR TOUT LE PÔLE"}
+                   <User size={14}/> {showOnlyMine ? "MON POINTAGE" : "TOUT LE PÔLE"}
                  </button>
                )}
                <button onClick={handleAttendanceExport} className="px-8 py-3.5 bg-indigo-600 text-white rounded-2xl shadow-xl flex items-center gap-3 font-black text-[10px] uppercase tracking-widest hover:bg-slate-900 transition-all">
-                 <Download size={18}/> EXPORTER POINTAGES XLS
+                 <Download size={18}/> EXPORTER XLS
                </button>
              </div>
            </div>
@@ -225,6 +282,7 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
                    <th className="p-8 text-center">Arrivée</th>
                    <th className="p-8 text-center">Départ</th>
                    <th className="p-8 text-center">Statut</th>
+                   {isAdminOrManager && <th className="p-8 text-right">Action</th>}
                  </tr>
                </thead>
                <tbody className="divide-y divide-slate-100">
@@ -245,13 +303,20 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
                           {status}
                         </span>
                       </td>
+                      {isAdminOrManager && (
+                        <td className="p-8 text-right">
+                          <button onClick={() => setEditingAttendance(a)} className="p-3 bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-xl opacity-0 group-hover:opacity-100 transition-all shadow-sm">
+                             <Edit3 size={16}/>
+                          </button>
+                        </td>
+                      )}
                     </tr>
                    );
                  })}
                </tbody>
              </table>
              {filteredAttendance.length === 0 && (
-               <div className="p-20 text-center text-slate-300 font-black uppercase tracking-widest italic">Aucun pointage trouvé pour ces filtres</div>
+               <div className="p-20 text-center text-slate-300 font-black uppercase tracking-widest italic">Aucun pointage enregistré</div>
              )}
            </div>
         </div>
@@ -261,19 +326,19 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 animate-in zoom-in">
            <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl text-center">
               <Activity className="mx-auto text-indigo-600 mb-6" size={48}/>
-              <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest mb-2">Taux d'assiduité {poleFilter !== 'all' ? `(${poleFilter})` : ''}</p>
+              <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest mb-2">Taux d'assiduité</p>
               <p className="text-6xl font-black text-slate-900 mb-2">{stats.rate}%</p>
-              <p className="text-indigo-600 font-black text-[11px] uppercase">{stats.presentToday} présents sur {stats.totalPossible}</p>
+              <p className="text-indigo-600 font-black text-[11px] uppercase">{stats.presentToday} présents / {stats.totalPossible}</p>
            </div>
            <div className="bg-white p-10 rounded-[3rem] border border-slate-100 shadow-xl text-center">
               <Timer className="mx-auto text-emerald-600 mb-6" size={48}/>
-              <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest mb-2">Horaire Type</p>
+              <p className="text-slate-400 font-black text-[10px] uppercase tracking-widest mb-2">Horaire Référence</p>
               <p className="text-4xl font-black text-slate-900 mb-2">{currentUser.startTime} - {currentUser.endTime}</p>
-              <p className="text-emerald-600 font-black text-[11px] uppercase">Pause 1h30 incluse</p>
+              <p className="text-emerald-600 font-black text-[11px] uppercase">Pause incluse</p>
            </div>
            <div className="bg-[#0f172a] p-10 rounded-[3rem] shadow-2xl text-center text-white">
               <TrendingUp className="mx-auto text-indigo-400 mb-6" size={48}/>
-              <p className="text-slate-500 font-black text-[10px] uppercase tracking-widest mb-2">Département</p>
+              <p className="text-slate-500 font-black text-[10px] uppercase tracking-widest mb-2">Structure</p>
               <p className="text-4xl font-black text-white mb-2 uppercase">{currentUser.department}</p>
               <p className="text-indigo-400 font-black text-[11px] uppercase tracking-widest">{currentUser.role}</p>
            </div>

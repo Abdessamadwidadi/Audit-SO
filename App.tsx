@@ -12,7 +12,8 @@ import Logo from './components/Logo';
 import { 
   LayoutDashboard, Clock, List, Users, FolderOpen, LogOut, 
   PlusCircle, Loader2, Search, Trash2, Download, Table, Edit3, ShieldCheck, User as UserIcon,
-  Bell, AlertTriangle, Info, CheckCircle2, X, Briefcase, ChevronRight
+  Bell, AlertTriangle, Info, CheckCircle2, X, Briefcase, ChevronRight, AlertCircle, Sparkles,
+  Inbox, Send
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { exportToExcel } from './services/csvService';
@@ -61,7 +62,7 @@ const App: React.FC = () => {
 
   const showNotif = useCallback((type: 'success' | 'error', msg: string) => {
     setNotif({ type, msg });
-    setTimeout(() => setNotif(null), 4000);
+    setTimeout(() => setNotif(null), 5000);
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -69,7 +70,7 @@ const App: React.FC = () => {
       const { data: cData } = await supabase.from('collaborators').select('*').order('name');
       const { data: fData } = await supabase.from('folders').select('*').order('number');
       const { data: eData } = await supabase.from('time_entries').select('*').order('date', { ascending: false });
-      const { data: tData } = await supabase.from('tasks').select('*').order('deadline', { ascending: true });
+      const { data: tData = [] } = await supabase.from('tasks').select('*').order('deadline', { ascending: true });
       const { data: aData } = await supabase.from('attendance').select('*').order('date', { ascending: false });
       
       setCollaborators(cData?.map(c => ({ 
@@ -77,7 +78,7 @@ const App: React.FC = () => {
       })) || []);
       setFolders(fData?.map(f => ({ id: String(f.id), name: f.name, number: f.number, clientName: f.client_name, serviceType: f.service_type as ServiceType, budgetHours: f.budget_hours })) || []);
       setEntries(eData?.map(e => ({ id: String(e.id), collaboratorId: String(e.collaborator_id), collaboratorName: e.collaborator_name, folderId: e.folder_id ? String(e.folder_id) : '', folderName: e.folder_name, folderNumber: e.folder_number, duration: e.duration, date: e.date, description: e.description, isOvertime: e.is_overtime, service: e.service as ServiceType })) || []);
-      setTasks(tData?.map(t => ({ id: String(t.id), title: t.title, assignedToId: String(t.assigned_to_id), assignedById: String(t.assigned_by_id), pole: t.pole || 'Audit', deadline: t.deadline, status: t.status as 'todo' | 'done', urgency: (t.urgency || 'normal') as any })) || []);
+      setTasks(tData?.map((t:any) => ({ id: String(t.id), title: t.title, assignedToId: String(t.assigned_to_id), assignedById: String(t.assigned_by_id), pole: t.pole || 'Audit', deadline: t.deadline, status: t.status as 'todo' | 'done', urgency: (t.urgency || 'normal') as any })) || []);
       setAttendance(aData?.map(a => ({ id: String(a.id), collaboratorId: String(a.collaborator_id), date: a.date, checkIn: a.check_in || "", checkOut: a.check_out })) || []);
       setIsDataLoaded(true);
     } catch (err) {
@@ -85,6 +86,53 @@ const App: React.FC = () => {
       setIsDataLoaded(true);
     }
   }, [supabase, showNotif]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const currentUser = useMemo(() => collaborators.find(c => String(c.id) === String(currentUserId)), [collaborators, currentUserId]);
+  const isAdminOrManager = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MANAGER;
+
+  // LOGIQUE DE NOTIFICATIONS / ALERTES
+  const activeAlerts = useMemo(() => {
+    if (!currentUser) return [];
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const list: {type: 'task' | 'clock' | 'time', msg: string, actionView?: any}[] = [];
+
+    // 1. Nouvelles tâches reçues de tiers
+    const receivedTasks = tasks.filter(t => 
+      String(t.assignedToId) === String(currentUser.id) && 
+      String(t.assignedById) !== String(currentUser.id) && 
+      t.status === 'todo'
+    );
+    if (receivedTasks.length > 0) {
+      const lastTask = receivedTasks[0];
+      const sender = collaborators.find(c => String(c.id) === String(lastTask.assignedById));
+      list.push({ 
+        type: 'task', 
+        msg: `${receivedTasks.length} mission(s) reçue(s) ${sender ? `de ${sender.name}` : ''}`, 
+        actionView: 'planning' 
+      });
+    }
+
+    // 2. Oubli de pointage (basé sur startTime)
+    const attToday = attendance.find(a => a.date === today && String(a.collaboratorId) === String(currentUser.id));
+    const [startH, startM] = (currentUser.startTime || "09:00").split(':').map(Number);
+    const startLimit = new Date(); startLimit.setHours(startH, startM + 30, 0); // 30min de grâce
+    if (!attToday && now > startLimit) {
+      list.push({ type: 'clock', msg: "Pointage d'arrivée oublié !", actionView: 'clocking' });
+    }
+
+    // 3. Oubli de saisie de temps
+    const totalToday = entries.filter(e => e.date === today && String(e.collaboratorId) === String(currentUser.id)).reduce((s, e) => s + e.duration, 0);
+    const [endH, endM] = (currentUser.endTime || "18:00").split(':').map(Number);
+    const endLimit = new Date(); endLimit.setHours(endH - 1, endM, 0); // Alerte 1h avant la fin
+    if (now > endLimit && totalToday < 7) {
+      list.push({ type: 'time', msg: `Saisie incomplète (${totalToday}h / 7h min.)`, actionView: 'log' });
+    }
+
+    return list;
+  }, [currentUser, tasks, attendance, entries, collaborators]);
 
   const handleLoginAttempt = useCallback(() => {
     if (!loginStep) return;
@@ -106,45 +154,48 @@ const App: React.FC = () => {
   const handleLogout = useCallback(() => {
     setCurrentUserId(null);
     localStorage.removeItem(STORE.USER_ID);
-    showNotif('success', "Déconnexion réussie");
+    showNotif('success', "Session terminée");
   }, [showNotif]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const currentUser = useMemo(() => collaborators.find(c => String(c.id) === String(currentUserId)), [collaborators, currentUserId]);
-  const isAdminOrManager = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MANAGER;
 
   const handleDeletionConfirmed = async () => {
     if (!deleteConfirm) return;
     try {
       const { error } = await supabase.from(deleteConfirm.table).delete().eq('id', deleteConfirm.id);
       if (error) throw error;
-      showNotif('success', "Supprimé avec succès");
+      showNotif('success', "Suppression réussie");
       setDeleteConfirm(null);
       fetchData();
     } catch (err) {
-      showNotif('error', "Erreur lors de la suppression");
+      showNotif('error', "Erreur");
     }
   };
 
   const handleUpdateEntry = async (updated: TimeEntry) => {
     try {
       const { error } = await supabase.from('time_entries').update({
-        folder_id: updated.folderId,
-        folder_name: updated.folderName,
-        folder_number: updated.folderNumber,
-        duration: updated.duration,
-        date: updated.date,
-        description: updated.description,
-        service: updated.service
+        folder_id: updated.folderId, folder_name: updated.folderName, folder_number: updated.folderNumber, duration: updated.duration, date: updated.date, description: updated.description, service: updated.service
       }).eq('id', updated.id);
-      
       if (error) throw error;
       showNotif('success', "Saisie mise à jour");
       setEditEntryModal(null);
       fetchData();
     } catch (err) {
-      showNotif('error', "Erreur mise à jour");
+      showNotif('error', "Erreur");
+    }
+  };
+
+  const handleUpdateAttendance = async (id: string, updates: Partial<Attendance>) => {
+    try {
+      const { error } = await supabase.from('attendance').update({
+        date: updates.date,
+        check_in: updates.checkIn,
+        check_out: updates.checkOut
+      }).eq('id', id);
+      if (error) throw error;
+      showNotif('success', "Pointage mis à jour");
+      fetchData();
+    } catch (err) {
+      showNotif('error', "Erreur mise à jour pointage");
     }
   };
 
@@ -156,13 +207,9 @@ const App: React.FC = () => {
     if (!matchSearch || !matchPole) return false;
     if (timeRange !== 'all') {
       const entryDate = new Date(e.date);
-      const today = new Date();
-      today.setHours(0,0,0,0);
+      const today = new Date(); today.setHours(0,0,0,0);
       if (timeRange === 'day') return e.date === new Date().toISOString().split('T')[0];
-      if (timeRange === 'week') {
-        const weekAgo = new Date(); weekAgo.setDate(today.getDate() - 7);
-        return entryDate >= weekAgo;
-      }
+      if (timeRange === 'week') { const weekAgo = new Date(); weekAgo.setDate(today.getDate() - 7); return entryDate >= weekAgo; }
       if (timeRange === 'month') return entryDate.getMonth() === today.getMonth() && entryDate.getFullYear() === today.getFullYear();
     }
     return true;
@@ -177,7 +224,7 @@ const App: React.FC = () => {
     exportToExcel(fileName, data);
   }, [filteredHistory]);
 
-  if (!isDataLoaded) return <div className="min-h-screen bg-[#020617] flex items-center justify-center text-indigo-50"><Loader2 className="animate-spin" size={48} /></div>;
+  if (!isDataLoaded) return <div className="min-h-screen bg-[#020617] flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={48} /></div>;
 
   if (!currentUserId || !currentUser) {
     if (loginStep) {
@@ -185,7 +232,7 @@ const App: React.FC = () => {
         <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6 text-white overflow-hidden relative">
           <div className="bg-white rounded-[4rem] w-full max-w-sm p-16 text-center shadow-2xl animate-in zoom-in duration-300 relative z-10">
             <ShieldCheck size={48} className="text-indigo-600 mx-auto mb-10" />
-            <h3 className="text-4xl font-black text-slate-900 mb-2 leading-none">Vérification</h3>
+            <h3 className="text-4xl font-black text-slate-900 mb-2 leading-none">PIN Code</h3>
             <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-12">{loginStep.collab.name}</p>
             <input type="password" maxLength={6} autoFocus className={`w-full p-6 bg-slate-50 border-2 ${pinError ? 'border-rose-500 animate-shake' : 'border-slate-100'} rounded-[2rem] font-black text-center text-4xl tracking-[0.4em] text-indigo-600 outline-none mb-12`} value={pinInput} onChange={e => setPinInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLoginAttempt()} />
             <div className="grid grid-cols-2 gap-4">
@@ -206,9 +253,6 @@ const App: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full max-w-7xl animate-in slide-in-from-bottom-10 duration-700">
           {collaborators.map(c => (
             <button key={c.id} onClick={() => setLoginStep({collab: c})} className="group relative bg-white/5 backdrop-blur-sm p-8 rounded-[3rem] border border-white/10 hover:border-indigo-500 hover:bg-white/10 transition-all text-left overflow-hidden">
-              <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                <ChevronRight className="text-indigo-500" size={24} />
-              </div>
               <h3 className="text-2xl font-black text-white group-hover:text-indigo-400 transition-colors">{c.name}</h3>
               <div className="flex items-center gap-3 mt-4">
                 <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${c.department === ServiceType.AUDIT ? 'bg-indigo-600 text-white' : 'bg-amber-600 text-white'}`}>{c.department}</span>
@@ -224,19 +268,15 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex bg-[#f8fafc]">
-      {/* Bandeau de Notification System (Rétabli et mis en évidence) */}
       {notif && (
-        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-4 px-10 py-5 rounded-[2rem] text-white font-black text-[11px] uppercase tracking-widest shadow-[0_20px_50px_rgba(0,0,0,0.3)] animate-in slide-in-from-top-4 transition-all duration-300 bg-slate-900 border border-white/10">
-          {notif.type === 'success' ? <CheckCircle2 className="text-emerald-400" size={20}/> : <AlertTriangle className="text-rose-400" size={20}/>}
+        <div className="fixed top-8 right-8 z-[1000] flex items-center gap-4 px-8 py-4 rounded-2xl text-white font-black text-[10px] uppercase tracking-widest shadow-2xl animate-in slide-in-from-right-4 bg-slate-900 border border-white/10">
+          {notif.type === 'success' ? <CheckCircle2 className="text-emerald-400" size={18}/> : <AlertTriangle className="text-rose-400" size={18}/>}
           {notif.msg}
-          <button onClick={() => setNotif(null)} className="ml-4 p-1 hover:bg-white/10 rounded-full"><X size={14}/></button>
         </div>
       )}
 
       <aside className="w-80 bg-[#0f172a] text-white p-10 flex flex-col shrink-0 relative shadow-2xl">
-        <div className="mb-12 flex justify-center">
-          <Logo variant="both" size={42} showText={false} />
-        </div>
+        <div className="mb-12 flex justify-center"><Logo variant="both" size={42} showText={false} /></div>
         <nav className="space-y-3 flex-grow">
           {[{v: 'log', i: <PlusCircle size={18}/>, l: 'Saisie Temps'}, {v: 'planning', i: <List size={18}/>, l: 'To-Do List'}, {v: 'clocking', i: <Clock size={18}/>, l: 'Pointage'}, {v: 'history', i: <Table size={18}/>, l: 'Historique'}].map(m => (
             <button key={m.v} onClick={() => setView(m.v as any)} className={`w-full flex items-center gap-4 px-8 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${view === m.v ? 'bg-indigo-600' : 'hover:bg-slate-800 text-slate-400'}`}>{m.i} {m.l}</button>
@@ -252,6 +292,27 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-grow p-16 overflow-y-auto relative bg-[#fdfdfe]">
+        {/* NOUVEAU : CENTRE D'ALERTES DYNAMIQUE */}
+        {activeAlerts.length > 0 && (
+          <div className="mb-10 space-y-3 animate-in slide-in-from-top-4">
+            {activeAlerts.map((alert, idx) => (
+              <div key={idx} className={`flex items-center justify-between p-5 rounded-[2rem] border-2 shadow-sm ${alert.type === 'task' ? 'bg-indigo-50 border-indigo-200 text-indigo-900' : 'bg-rose-50 border-rose-200 text-rose-900'}`}>
+                <div className="flex items-center gap-4">
+                  <div className={`p-2.5 rounded-xl ${alert.type === 'task' ? 'bg-indigo-600' : 'bg-rose-600'} text-white`}>
+                    {alert.type === 'task' ? <Inbox size={18}/> : alert.type === 'clock' ? <Clock size={18}/> : <AlertCircle size={18}/>}
+                  </div>
+                  <span className="font-black text-[11px] uppercase tracking-widest">{alert.msg}</span>
+                </div>
+                {alert.actionView && (
+                  <button onClick={() => setView(alert.actionView)} className={`px-5 py-2 rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg ${alert.type === 'task' ? 'bg-indigo-600 hover:bg-slate-900' : 'bg-rose-600 hover:bg-slate-900'} text-white transition-all`}>
+                    Accéder
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
         <header className="mb-12 border-b border-slate-100 pb-10 flex justify-between items-end">
           <div className="flex items-center gap-6">
             <Logo variant="both" size={64} showText={false} />
@@ -274,7 +335,7 @@ const App: React.FC = () => {
             const folder = folders.find(f => String(f.id) === String(d.folderId));
             const payload = { id: generateId(), collaborator_id: currentUserId, collaborator_name: currentUser.name, folder_id: folder?.id, folder_name: folder?.name, folder_number: folder?.number, duration: d.duration, date: d.date, description: d.description, is_overtime: d.isOvertime || false, service: folder?.serviceType };
             const { error } = await supabase.from('time_entries').insert([payload]);
-            if (error) showNotif('error', "Erreur lors de l'enregistrement"); else { showNotif('success', "Temps enregistré avec succès"); fetchData(); }
+            if (error) showNotif('error', "Erreur"); else { showNotif('success', "Temps enregistré"); fetchData(); }
           }} />}
           
           {view === 'planning' && <PlanningModule currentUser={currentUser} tasks={tasks} team={collaborators} showNotif={showNotif} onAddTask={async (t) => {
@@ -291,17 +352,13 @@ const App: React.FC = () => {
             <div className="bg-white rounded-[3rem] border border-slate-200 shadow-xl overflow-hidden animate-in fade-in duration-500">
                <div className="p-8 border-b flex flex-wrap justify-between items-center bg-slate-50 gap-6">
                  <div className="flex-grow max-w-md relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><input type="text" placeholder="Rechercher..." className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl font-bold text-slate-900 text-xs outline-none" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div>
-                 
                  <div className="flex items-center gap-4">
                     {isAdminOrManager && (
-                      <button 
-                        onClick={() => setShowOnlyMine(!showOnlyMine)} 
-                        className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border shadow-sm ${showOnlyMine ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-100' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
-                      >
-                        {showOnlyMine ? 'Voir tout le pôle' : 'Mes saisies perso'}
+                      <button onClick={() => setShowOnlyMine(!showOnlyMine)} className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border shadow-sm ${showOnlyMine ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-500 border-slate-200'}`}>
+                        {showOnlyMine ? 'Tout le pôle' : 'Mes saisies'}
                       </button>
                     )}
-                    <button onClick={() => handleExport()} className="p-4 bg-slate-900 text-white rounded-2xl shadow-lg font-black text-[10px] uppercase tracking-widest hover:bg-indigo-600 transition-all flex items-center gap-2"><Download size={18}/> EXPORTER XLS</button>
+                    <button onClick={() => handleExport()} className="p-4 bg-slate-900 text-white rounded-2xl shadow-lg font-black text-[10px] uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-600 transition-all"><Download size={18}/> EXPORTER XLS</button>
                  </div>
                </div>
                <div className="overflow-x-auto">
@@ -317,10 +374,10 @@ const App: React.FC = () => {
                         <td className="p-6 text-right">
                           <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
                             {(isAdminOrManager || String(e.collaboratorId) === String(currentUserId)) && (
-                              <button onClick={() => setEditEntryModal(e)} className="p-2 text-slate-400 hover:text-indigo-600 transition-all bg-slate-50 rounded-lg"><Edit3 size={16}/></button>
+                              <button onClick={() => setEditEntryModal(e)} className="p-2 text-slate-400 hover:text-indigo-600 bg-slate-50 rounded-lg"><Edit3 size={16}/></button>
                             )}
                             {(isAdminOrManager || String(e.collaboratorId) === String(currentUserId)) && (
-                              <button onClick={() => setDeleteConfirm({id: e.id, table: 'time_entries', label: 'cette saisie'})} className="p-2 text-slate-400 hover:text-rose-500 transition-all bg-slate-50 rounded-lg"><Trash2 size={16}/></button>
+                              <button onClick={() => setDeleteConfirm({id: e.id, table: 'time_entries', label: 'cette saisie'})} className="p-2 text-slate-400 hover:text-rose-500 bg-slate-50 rounded-lg"><Trash2 size={16}/></button>
                             )}
                           </div>
                         </td>
@@ -335,21 +392,21 @@ const App: React.FC = () => {
           {view === 'clocking' && <ClockingModule currentUser={currentUser} collaborators={collaborators} attendance={attendance} onCheckIn={async (t) => { 
             const payload = { id: generateId(), collaborator_id: currentUserId, date: new Date().toISOString().split('T')[0], check_in: t };
             const { error } = await supabase.from('attendance').insert([payload]);
-            if (error) showNotif('error', "Erreur Pointage"); else { showNotif('success', "Arrivée validée"); fetchData(); }
+            if (error) showNotif('error', "Erreur"); else { showNotif('success', "Arrivée enregistrée"); fetchData(); }
           }} onCheckOut={async (id, t) => { 
-            const { error } = await supabase.from('attendance').update({ check_out: t }).eq('id', id); if (error) showNotif('error', 'Erreur lors du départ'); else { showNotif('success', 'Départ validé'); fetchData(); }
-          }} onExport={(customData) => handleExport(customData)} poleFilter={poleFilter} />}
+            const { error } = await supabase.from('attendance').update({ check_out: t }).eq('id', id); if (error) showNotif('error', 'Erreur'); else { showNotif('success', 'Départ enregistré'); fetchData(); }
+          }} onUpdateAttendance={handleUpdateAttendance} onExport={(customData) => handleExport(customData)} poleFilter={poleFilter} />}
           
           {view === 'folders' && (
-            <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border border-slate-200 animate-in fade-in">
+            <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border border-slate-200">
               <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
-                <h3 className="text-xl font-black text-slate-900 tracking-tight">Base de données Dossiers</h3>
-                <button onClick={() => setEntityModal({type: 'folder'})} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-100 flex items-center gap-2 hover:bg-slate-900 transition-all"><PlusCircle size={16}/> Ajouter Dossier</button>
+                <h3 className="text-xl font-black text-slate-900 tracking-tight">Dossiers Clients</h3>
+                <button onClick={() => setEntityModal({type: 'folder'})} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2 hover:bg-slate-900 transition-all"><PlusCircle size={16}/> Nouveau Dossier</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-100 text-[10px] font-black uppercase border-b tracking-widest text-slate-400">
-                    <tr><th className="p-8">Numéro</th><th className="p-8">Nom du Dossier</th><th className="p-8">Client</th><th className="p-8">Pôle</th><th className="p-8 text-right">Actions</th></tr>
+                  <thead className="bg-slate-100 text-[10px] font-black uppercase border-b text-slate-400">
+                    <tr><th className="p-8">Numéro</th><th className="p-8">Dossier</th><th className="p-8">Client</th><th className="p-8">Pôle</th><th className="p-8 text-right">Actions</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {folders.filter(f => poleFilter === 'all' || f.serviceType?.toLowerCase() === poleFilter.toLowerCase()).map(f => (
@@ -357,9 +414,7 @@ const App: React.FC = () => {
                         <td className="p-8 font-black text-indigo-600">{f.number}</td>
                         <td className="p-8 font-bold text-slate-900 text-sm">{f.name}</td>
                         <td className="p-8 text-slate-500">{f.clientName || '-'}</td>
-                        <td className="p-8">
-                          <span className={`px-4 py-1.5 rounded-full font-black uppercase text-[8px] tracking-widest ${f.serviceType === ServiceType.AUDIT ? 'bg-indigo-600 text-white' : 'bg-amber-600 text-white'}`}>{f.serviceType}</span>
-                        </td>
+                        <td className="p-8"><span className={`px-4 py-1.5 rounded-full font-black uppercase text-[8px] tracking-widest ${f.serviceType === ServiceType.AUDIT ? 'bg-indigo-600 text-white' : 'bg-amber-600 text-white'}`}>{f.serviceType}</span></td>
                         <td className="p-8 text-right">
                           <div className="flex justify-end gap-3">
                             <button onClick={() => setEntityModal({type: 'folder', data: f})} className="p-3 bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all"><Edit3 size={16}/></button>
@@ -375,14 +430,14 @@ const App: React.FC = () => {
           )}
 
           {view === 'collabs' && (
-            <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border border-slate-200 animate-in fade-in">
+            <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border border-slate-200">
               <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
-                <h3 className="text-xl font-black text-slate-900 tracking-tight">Gestion d'équipe</h3>
-                <button onClick={() => setEntityModal({type: 'collab'})} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-100 flex items-center gap-2 hover:bg-slate-900 transition-all"><PlusCircle size={16}/> Nouveau Membre</button>
+                <h3 className="text-xl font-black text-slate-900 tracking-tight">Equipe</h3>
+                <button onClick={() => setEntityModal({type: 'collab'})} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-2 hover:bg-slate-900 transition-all"><PlusCircle size={16}/> Nouveau Membre</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-100 text-[10px] font-black uppercase border-b tracking-widest text-slate-400">
+                  <thead className="bg-slate-100 text-[10px] font-black uppercase border-b text-slate-400">
                     <tr><th className="p-8">Nom</th><th className="p-8">Rôle</th><th className="p-8">Pôle</th><th className="p-8 text-right">Actions</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -390,9 +445,7 @@ const App: React.FC = () => {
                       <tr key={c.id} className="text-xs hover:bg-indigo-50/20 group transition-all">
                         <td className="p-8 font-bold text-slate-900 text-sm">{c.name}</td>
                         <td className="p-8"><span className="px-4 py-1.5 bg-slate-100 rounded-full font-black text-[9px] uppercase tracking-widest text-slate-500">{c.role}</span></td>
-                        <td className="p-8">
-                          <span className={`px-4 py-1.5 rounded-full font-black uppercase text-[8px] tracking-widest ${c.department === ServiceType.AUDIT ? 'bg-indigo-600 text-white' : 'bg-amber-600 text-white'}`}>{c.department}</span>
-                        </td>
+                        <td className="p-8"><span className={`px-4 py-1.5 rounded-full font-black uppercase text-[8px] tracking-widest ${c.department === ServiceType.AUDIT ? 'bg-indigo-600 text-white' : 'bg-amber-600 text-white'}`}>{c.department}</span></td>
                         <td className="p-8 text-right">
                           <div className="flex justify-end gap-3">
                             <button onClick={() => setEntityModal({type: 'collab', data: c})} className="p-3 bg-slate-50 text-slate-400 hover:text-indigo-600 rounded-xl transition-all"><Edit3 size={16}/></button>
@@ -412,27 +465,11 @@ const App: React.FC = () => {
       {entityModal && <EntityModal type={entityModal.type} initialData={entityModal.data} onSave={async (data) => {
         const payload: any = entityModal.type === 'collab' ? { name: data.name, department: data.department, role: data.role, password: data.password, hiring_date: data.hiringDate, start_time: data.startTime, end_time: data.endTime } : { name: data.name, number: data.number, client_name: data.clientName, service_type: data.serviceType, budget_hours: data.budgetHours };
         if (data.id) await supabase.from(entityModal.type === 'collab' ? 'collaborators' : 'folders').update(payload).eq('id', data.id); else { payload.id = generateId(); await supabase.from(entityModal.type === 'collab' ? 'collaborators' : 'folders').insert([payload]); }
-        showNotif('success', "Enregistré avec succès"); setEntityModal(null); fetchData();
+        showNotif('success', "Enregistré"); setEntityModal(null); fetchData();
       }} onClose={() => setEntityModal(null)} />}
 
-      {editEntryModal && (
-        <EntryEditModal 
-          entry={editEntryModal} 
-          folders={folders} 
-          currentUser={currentUser}
-          onSave={handleUpdateEntry} 
-          onClose={() => setEditEntryModal(null)} 
-        />
-      )}
-
-      {deleteConfirm && (
-        <ConfirmModal 
-          title="Confirmation" 
-          message={`Êtes-vous sûr de vouloir supprimer ${deleteConfirm.label} ? Cette action est irréversible.`} 
-          onConfirm={handleDeletionConfirmed} 
-          onCancel={() => setDeleteConfirm(null)} 
-        />
-      )}
+      {editEntryModal && <EntryEditModal entry={editEntryModal} folders={folders} currentUser={currentUser} onSave={handleUpdateEntry} onClose={() => setEditEntryModal(null)} />}
+      {deleteConfirm && <ConfirmModal title="Confirmation" message={`Êtes-vous sûr de vouloir supprimer ${deleteConfirm.label} ?`} onConfirm={handleDeletionConfirmed} onCancel={() => setDeleteConfirm(null)} />}
     </div>
   );
 };
