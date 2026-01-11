@@ -48,7 +48,7 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
     const taskDate = new Date(taskDateStr);
     const now = new Date();
     
-    // Logique de retard : après 18h le jour de l'échéance ou jours passés
+    // Logique de retard
     const deadline18h = new Date(taskDateStr);
     deadline18h.setHours(18, 0, 0, 0);
     const isLate = now > deadline18h && t.status === 'todo';
@@ -80,21 +80,6 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
     const todayStr = new Date().toISOString().split('T')[0];
     await onUpdateTask(id, { deadline: todayStr });
     showNotif('success', "Tâche reportée à aujourd'hui");
-  };
-
-  const handleBulkReport = async () => {
-    const now = new Date();
-    const lates = filteredTasks.filter(t => {
-      const d = new Date(t.deadline);
-      d.setHours(18,0,0,0);
-      return now > d && t.status === 'todo';
-    });
-    if (lates.length === 0) return;
-    const todayStr = now.toISOString().split('T')[0];
-    for (const t of lates) {
-      await onUpdateTask(t.id, { deadline: todayStr });
-    }
-    showNotif('success', `${lates.length} tâches reportées`);
   };
 
   return (
@@ -143,7 +128,7 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
 
         <div className="flex items-center gap-4">
            <button onClick={() => setShowAllTasks(!showAllTasks)} className={`px-5 py-2.5 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm border ${showAllTasks ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-100 hover:bg-slate-50'}`}>
-              {showAllTasks ? <Eye size={14}/> : <EyeOff size={14}/>} {showAllTasks ? 'Toutes mes tâches' : 'Vue Hebdo'}
+              {showAllTasks ? <Eye size={14}/> : <EyeOff size={14}/>} {showAllTasks ? 'Tout voir' : 'Vue Hebdo'}
            </button>
            
            {!showAllTasks && (
@@ -153,20 +138,17 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
                <button onClick={() => setWeekOffset(prev => prev + 1)} className="p-1 text-slate-400 hover:text-indigo-600 transition-all"><ChevronRight size={18}/></button>
              </div>
            )}
-
-           {filteredTasks.some(t => { const d = new Date(t.deadline); d.setHours(18,0,0,0); return new Date() > d && t.status === 'todo'; }) && (
-             <button onClick={handleBulkReport} className="px-4 py-2.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all flex items-center gap-2 shadow-sm"><History size={14}/> Tout reporter</button>
-           )}
         </div>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-2xl overflow-hidden animate-in fade-in">
+      <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
               <tr>
                 <th className="p-5 w-16 text-center">Statut</th>
-                <th className="p-5">Travaux / Mission</th>
+                <th className="p-5">Mission</th>
+                {(activeTab === 'received' || activeTab === 'delegated') && <th className="p-5">Assigné {activeTab === 'received' ? 'par' : 'à'}</th>}
                 <th className="p-5">Pôle</th>
                 <th className="p-5">Urgence</th>
                 <th className="p-5">Échéance</th>
@@ -180,6 +162,9 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
                 d.setHours(18,0,0,0);
                 const isLate = now > d && t.status === 'todo';
                 const urgency = URGENCY_MAP[t.urgency] || URGENCY_MAP.normal;
+                const otherParty = activeTab === 'received' 
+                  ? team.find(c => String(c.id) === String(t.assignedById))?.name 
+                  : team.find(c => String(c.id) === String(t.assignedToId))?.name;
 
                 return (
                   <tr key={t.id} className={`group text-[11px] transition-colors ${t.status === 'done' ? 'bg-slate-50/50 opacity-60' : isLate ? 'bg-rose-50/30' : 'hover:bg-indigo-50/20'}`}>
@@ -191,6 +176,11 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
                     <td className="p-5">
                        <p className={`font-black tracking-tight ${t.status === 'done' ? 'text-slate-400 line-through' : 'text-slate-900'}`}>{t.title}</p>
                     </td>
+                    {(activeTab === 'received' || activeTab === 'delegated') && (
+                      <td className="p-5">
+                        <span className="font-bold text-indigo-600">{otherParty || 'Inconnu'}</span>
+                      </td>
+                    )}
                     <td className="p-5">
                        <span className="px-2 py-0.5 bg-slate-100 text-slate-400 rounded-md font-black text-[9px] uppercase">{t.pole}</span>
                     </td>
@@ -217,10 +207,7 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
             </tbody>
           </table>
           {filteredTasks.length === 0 && (
-            <div className="p-20 text-center">
-              <ClipboardList size={40} className="mx-auto text-slate-100 mb-4" />
-              <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest italic">Aucune tâche disponible dans cette vue</p>
-            </div>
+            <div className="p-20 text-center text-slate-300 uppercase text-[9px] font-black tracking-widest italic">Aucun travaux trouvé</div>
           )}
         </div>
       </div>

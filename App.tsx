@@ -10,7 +10,7 @@ import Logo from './components/Logo';
 import { 
   LayoutDashboard, Clock, List, Users, FolderOpen, LogOut, 
   PlusCircle, Loader2, Search, Trash2, Download, Table, Edit3, ShieldCheck, User as UserIcon,
-  Calendar as CalendarIcon, UserPlus, Bell, AlertTriangle, Info, CheckCircle2, Eye, X
+  Bell, AlertTriangle, Info, CheckCircle2, X
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { exportToExcel } from './services/csvService';
@@ -21,6 +21,9 @@ const STORE = {
 };
 const DEFAULT_SUPABASE_URL = "https://cvbovfqbgdchdycqtmpr.supabase.co";
 const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN2Ym92ZnFiZ2RjaGR5Y3F0bXByIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY4NTcyNDcsImV4cCI6MjA4MjQzMzI0N30.e16pFuNwInvA51q9X1V_0fpAWar8JPVQZD4-tfx0gdk";
+
+// Utilitaire pour générer des UUID si la DB n'auto-génère pas les IDs
+const generateId = () => crypto.randomUUID();
 
 export const formatDateFR = (dateStr: string) => {
   if (!dateStr) return "";
@@ -71,12 +74,39 @@ const App: React.FC = () => {
       const { data: aData } = await supabase.from('attendance').select('*').order('date', { ascending: false });
       
       setCollaborators(cData?.map(c => ({ 
-        id: String(c.id), name: c.name, department: c.department as ServiceType, hiringDate: c.hiring_date, role: c.role as UserRole, password: String(c.password), startTime: c.start_time || "09:00", endTime: c.end_time || "18:00"
+        id: String(c.id), 
+        name: c.name, 
+        department: c.department as ServiceType, 
+        hiringDate: c.hiring_date, 
+        role: c.role as UserRole, 
+        password: String(c.password), 
+        startTime: c.start_time || "09:00", 
+        endTime: c.end_time || "18:00"
       })) || []);
-      setFolders(fData?.map(f => ({ id: String(f.id), name: f.name, number: f.number, clientName: f.client_name, serviceType: f.service_type as ServiceType, budgetHours: f.budget_hours })) || []);
-      setEntries(eData?.map(e => ({ id: String(e.id), collaboratorId: String(e.collaborator_id), collaboratorName: e.collaborator_name, folderId: String(e.folder_id), folderName: e.folder_name, folderNumber: e.folder_number, duration: e.duration, date: e.date, description: e.description, isOvertime: e.is_overtime, service: e.service as ServiceType })) || []);
       
-      // FIX: Mapping correct pour le Planning (camelCase vs snake_case)
+      setFolders(fData?.map(f => ({ 
+        id: String(f.id), 
+        name: f.name, 
+        number: f.number, 
+        clientName: f.client_name, 
+        serviceType: f.service_type as ServiceType, 
+        budgetHours: f.budget_hours 
+      })) || []);
+      
+      setEntries(eData?.map(e => ({ 
+        id: String(e.id), 
+        collaboratorId: String(e.collaborator_id), 
+        collaboratorName: e.collaborator_name, 
+        folderId: e.folder_id ? String(e.folder_id) : '', 
+        folderName: e.folder_name, 
+        folderNumber: e.folder_number, 
+        duration: e.duration, 
+        date: e.date, 
+        description: e.description, 
+        isOvertime: e.is_overtime, 
+        service: e.service as ServiceType 
+      })) || []);
+      
       setTasks(tData?.map(t => ({ 
         id: String(t.id), 
         title: t.title, 
@@ -88,10 +118,17 @@ const App: React.FC = () => {
         urgency: (t.urgency || 'normal') as any 
       })) || []);
       
-      setAttendance(aData?.map(a => ({ id: String(a.id), collaboratorId: String(a.collaborator_id), date: a.date, checkIn: a.check_in || "", checkOut: a.check_out })) || []);
+      setAttendance(aData?.map(a => ({ 
+        id: String(a.id), 
+        collaboratorId: String(a.collaborator_id), 
+        date: a.date, 
+        checkIn: a.check_in || "", 
+        checkOut: a.check_out 
+      })) || []);
+      
       setIsDataLoaded(true);
     } catch (err) {
-      showNotif('error', "Erreur chargement");
+      showNotif('error', "Erreur chargement données");
       setIsDataLoaded(true);
     }
   }, [supabase, showNotif]);
@@ -108,10 +145,18 @@ const App: React.FC = () => {
     const currentHour = now.getHours();
     const today = now.toISOString().split('T')[0];
 
+    // Notification de nouvelle tâche avec auteur
     tasks.filter(t => String(t.assignedToId) === String(currentUser.id) && String(t.assignedById) !== String(currentUser.id) && t.status === 'todo').forEach(t => {
       const alertId = `task_${t.id}`;
       if (!readAlerts.includes(alertId)) {
-        alerts.push({ id: alertId, title: "Nouvelle Tâche", msg: t.title, type: 'info', icon: <List size={14}/> });
+        const assigner = collaborators.find(c => String(c.id) === String(t.assignedById));
+        alerts.push({ 
+          id: alertId, 
+          title: "Nouvelle Tâche", 
+          msg: `${t.title} - Assignée par ${assigner?.name || 'Inconnu'}`, 
+          type: 'info', 
+          icon: <List size={14}/> 
+        });
       }
     });
 
@@ -120,7 +165,7 @@ const App: React.FC = () => {
     if (!todayAttendance && (currentHour > startH || (currentHour === startH && now.getMinutes() > startM + 15))) {
       const alertId = `clockin_${today}`;
       if (!readAlerts.includes(alertId)) {
-        alerts.push({ id: alertId, title: "Pointage manquant", msg: "Avez-vous oublié de pointer votre arrivée ?", type: 'warning', icon: <Clock size={14}/> });
+        alerts.push({ id: alertId, title: "Pointage manquant", msg: "Oubli de pointage ? Pensez à enregistrer votre arrivée.", type: 'warning', icon: <Clock size={14}/> });
       }
     }
 
@@ -128,12 +173,12 @@ const App: React.FC = () => {
     if (currentHour >= 18 && todayHours < 7.5) {
       const alertId = `timesheet_${today}`;
       if (!readAlerts.includes(alertId)) {
-        alerts.push({ id: alertId, title: "Saisie incomplète", msg: `Journée de ${todayHours}h. Pensez à compléter vos travaux.`, type: 'warning', icon: <Edit3 size={14}/> });
+        alerts.push({ id: alertId, title: "Saisie incomplète", msg: `Total du jour : ${todayHours}h. N'oubliez pas vos travaux.`, type: 'warning', icon: <Edit3 size={14}/> });
       }
     }
 
     return alerts;
-  }, [currentUser, tasks, attendance, entries, readAlerts]);
+  }, [currentUser, tasks, attendance, entries, readAlerts, collaborators]);
 
   const markAlertAsRead = (id: string) => {
     const updated = [...readAlerts, id];
@@ -184,7 +229,9 @@ const App: React.FC = () => {
   const filteredHistory = useMemo(() => {
     return entries.filter(e => {
       if (!isAdminOrManager && String(e.collaboratorId) !== String(currentUserId)) return false;
-      const matchSearch = e.collaboratorName.toLowerCase().includes(searchQuery.toLowerCase()) || e.folderName.toLowerCase().includes(searchQuery.toLowerCase()) || e.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchSearch = (e.collaboratorName?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || 
+                          (e.folderName?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || 
+                          (e.description?.toLowerCase() || '').includes(searchQuery.toLowerCase());
       const matchPole = poleFilter === 'all' || e.service?.toLowerCase() === poleFilter.toLowerCase();
       if (!matchSearch || !matchPole) return false;
       if (timeRange !== 'all') {
@@ -203,17 +250,25 @@ const App: React.FC = () => {
     });
   }, [entries, searchQuery, poleFilter, timeRange, isAdminOrManager, currentUserId]);
 
-  const handleExport = () => {
-    const data = [
-      ["DATE", "COLLABORATEUR", "DOSSIER", "N° DOSSIER", "PÔLE", "TRAVAUX", "DURÉE"],
-      ...filteredHistory.map(e => [formatDateFR(e.date), e.collaboratorName, e.folderName, e.folderNumber, e.service, e.description, e.duration])
+  const handleExport = useCallback((customData?: any[][]) => {
+    const fileName = customData ? "Export_MSO" : `Historique_MSO_${new Date().toISOString().split('T')[0]}`;
+    const data = customData || [
+      ["DATE", "COLLABORATEUR", "DOSSIER", "NUMÉRO", "DESCRIPTION", "HEURES"],
+      ...filteredHistory.map(e => [
+        formatDateFR(e.date),
+        e.collaboratorName,
+        e.folderName,
+        e.folderNumber,
+        e.description,
+        e.duration
+      ])
     ];
-    exportToExcel("Export_MSO_Historique", data);
-  };
+    exportToExcel(fileName, data);
+  }, [filteredHistory]);
 
   if (!isDataLoaded) return <div className="min-h-screen bg-[#020617] flex items-center justify-center text-indigo-500"><Loader2 className="animate-spin" size={48} /></div>;
 
-  if (!currentUserId) {
+  if (!currentUserId || !currentUser) {
     if (loginStep) {
       return (
         <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6 text-white overflow-hidden relative">
@@ -296,7 +351,9 @@ const App: React.FC = () => {
           <div className="flex items-center gap-6">
             <Logo variant="both" size={64} showText={false} />
             <div>
-              <h2 className="text-7xl font-black tracking-tighter uppercase text-slate-900 leading-none">{view === 'log' ? 'Saisie' : view === 'planning' ? 'Planning' : view === 'clocking' ? 'Pointage' : view === 'history' ? 'Historique' : view}</h2>
+              <h2 className="text-7xl font-black tracking-tighter uppercase text-slate-900 leading-none">
+                {view === 'log' ? 'Saisie' : view === 'planning' ? 'Planning' : view === 'clocking' ? 'Pointage' : view === 'history' ? 'Historique' : view}
+              </h2>
               <p className="text-indigo-600 font-black text-[11px] uppercase tracking-[0.3em] mt-3">
                 {currentUser.name} • <span className="text-slate-900">{currentUser.role.toUpperCase()}</span>
               </p>
@@ -354,16 +411,49 @@ const App: React.FC = () => {
 
         <div className="space-y-12">
           {view === 'log' && <TimeEntryForm currentUser={currentUser} folders={folders} existingEntries={entries} onAddEntry={async (d) => {
-            const f = folders.find(folder => folder.id === d.folderId);
-            await supabase.from('time_entries').insert([{ id: `e_${Date.now()}`, collaborator_id: currentUserId, collaborator_name: currentUser.name, folder_id: f?.id, folder_name: f?.name, folder_number: f?.number, duration: d.duration, date: d.date, description: d.description, is_overtime: d.is_overtime, service: f?.serviceType }]);
-            showNotif('success', "Enregistré"); fetchData();
+            const folder = folders.find(f => String(f.id) === String(d.folderId));
+            if (!folder) {
+               showNotif('error', "Le dossier sélectionné est introuvable.");
+               return;
+            }
+
+            const payload: any = { 
+              id: generateId(),
+              collaborator_id: currentUserId, 
+              collaborator_name: currentUser.name, 
+              folder_id: folder.id, 
+              folder_name: folder.name, 
+              folder_number: folder.number, 
+              duration: d.duration, 
+              date: d.date, 
+              description: d.description, 
+              is_overtime: d.isOvertime || false, 
+              service: folder.serviceType 
+            };
+
+            const { error } = await supabase.from('time_entries').insert([payload]);
+            if (error) {
+               showNotif('error', "Erreur Saisie : " + error.message);
+            } else {
+               showNotif('success', "Saisie enregistrée"); fetchData();
+            }
           }} />}
           
           {view === 'planning' && <PlanningModule currentUser={currentUser} tasks={tasks} team={collaborators} showNotif={showNotif} onAddTask={async (t) => {
-            await supabase.from('tasks').insert([{ id: `t_${Date.now()}`, title: t.title, assigned_to_id: t.assignedToId, assigned_by_id: currentUserId, pole: t.pole || currentUser.department, deadline: t.deadline, status: 'todo', urgency: t.urgency || 'normal' }]);
-            fetchData();
+            const payload = { 
+              id: generateId(),
+              title: t.title, 
+              assigned_to_id: t.assignedToId, 
+              assigned_by_id: currentUserId, 
+              pole: t.pole || currentUser.department, 
+              deadline: t.deadline, 
+              status: 'todo', 
+              urgency: t.urgency || 'normal' 
+            };
+            const { error } = await supabase.from('tasks').insert([payload]);
+            if (error) showNotif('error', "Erreur Tâche : " + error.message);
+            else { showNotif('success', "Tâche ajoutée"); fetchData(); }
           }} onUpdateTask={async (id, updates) => { 
-            // Mapping updates keys for DB
             const dbUpdates: any = { ...updates };
             if (updates.assignedToId) { dbUpdates.assigned_to_id = updates.assignedToId; delete dbUpdates.assignedToId; }
             if (updates.assignedById) { dbUpdates.assigned_by_id = updates.assignedById; delete dbUpdates.assignedById; }
@@ -385,19 +475,12 @@ const App: React.FC = () => {
                       </button>
                     ))}
                  </div>
-                 <button onClick={handleExport} className="p-4 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-slate-900 transition-all flex items-center gap-2 font-black text-[10px] uppercase tracking-widest"><Download size={18}/> EXPORTER XLS</button>
+                 <button onClick={() => handleExport()} className="p-4 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-slate-900 transition-all flex items-center gap-2 font-black text-[10px] uppercase tracking-widest"><Download size={18}/> EXPORTER XLS</button>
                </div>
                <div className="overflow-x-auto">
                  <table className="w-full text-left">
                     <thead className="bg-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-900 border-b">
-                      <tr>
-                        <th className="p-6">Date</th>
-                        <th className="p-6">Collaborateur</th>
-                        <th className="p-6">Dossier</th>
-                        <th className="p-6">Description / Travaux</th>
-                        <th className="p-6">Heures</th>
-                        <th className="p-6 text-right">Actions</th>
-                      </tr>
+                      <tr><th className="p-6">Date</th><th className="p-6">Collaborateur</th><th className="p-6">Dossier</th><th className="p-6">Description</th><th className="p-6">Heures</th><th className="p-6 text-right">Actions</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {filteredHistory.map(e => (
@@ -407,45 +490,44 @@ const App: React.FC = () => {
                           <td className="p-6 font-black">{e.folderName} <span className="block text-[8px] text-slate-400 font-bold">{e.folderNumber}</span></td>
                           <td className="p-6 font-medium italic text-slate-700">{e.description}</td>
                           <td className="p-6 font-black text-slate-900">{e.duration}h</td>
-                          <td className="p-6 text-right">
-                             <button onClick={() => handleDeletion(e.id, 'time_entries')} className="p-2 text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
-                               <Trash2 size={16} />
-                             </button>
-                          </td>
+                          <td className="p-6 text-right"><button onClick={() => handleDeletion(e.id, 'time_entries')} className="p-2 text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16}/></button></td>
                         </tr>
                       ))}
                     </tbody>
                  </table>
-                 {filteredHistory.length === 0 && <div className="p-20 text-center text-slate-300 font-bold text-[10px] uppercase tracking-widest">Aucune saisie trouvée</div>}
                </div>
             </div>
           )}
 
           {view === 'dashboard' && <Dashboard entries={entries} folders={folders} attendance={attendance} collaborators={collaborators} poleFilter={poleFilter} />}
-          {view === 'clocking' && <ClockingModule currentUser={currentUser} collaborators={collaborators} attendance={attendance} onCheckIn={async (t) => { await supabase.from('attendance').insert([{ id: `a_${Date.now()}`, collaborator_id: currentUserId, date: new Date().toISOString().split('T')[0], check_in: t }]); fetchData(); }} onCheckOut={async (id, t) => { await supabase.from('attendance').update({ check_out: t }).eq('id', id); fetchData(); }} poleFilter={poleFilter} onExport={() => {
-            const data = [["DATE", "COLLABORATEUR", "ENTREE", "SORTIE"], ...attendance.map(a => [formatDateFR(a.date), collaborators.find(c => c.id === a.collaboratorId)?.name || "Inconnu", a.checkIn, a.checkOut || "-"])];
-            exportToExcel("Pointage_MSO", data);
-          }} />}
+          
+          {view === 'clocking' && <ClockingModule currentUser={currentUser} collaborators={collaborators} attendance={attendance} onCheckIn={async (t) => { 
+            const payload = { id: generateId(), collaborator_id: currentUserId, date: new Date().toISOString().split('T')[0], check_in: t };
+            const { error } = await supabase.from('attendance').insert([payload]);
+            if (error) showNotif('error', "Erreur Pointage : " + error.message);
+            else { showNotif('success', "Arrivée validée"); fetchData(); }
+          }} onCheckOut={async (id, t) => { 
+            const { error } = await supabase.from('attendance').update({ check_out: t }).eq('id', id); 
+            if (error) showNotif('error', "Erreur Sortie : " + error.message);
+            else { showNotif('success', "Départ validé"); fetchData(); }
+          }} onExport={(customData) => handleExport(customData)} />}
           
           {view === 'folders' && (
             <div className="bg-white rounded-[3rem] border border-slate-200 shadow-xl overflow-hidden">
               <div className="p-8 border-b flex justify-between items-center bg-slate-50">
-                <div className="flex items-center gap-4">
-                  <div className="relative w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/><input type="text" placeholder="Rechercher..." className="w-full pl-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div>
-                </div>
+                <div className="relative w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/><input type="text" placeholder="Rechercher..." className="w-full pl-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div>
                 <button onClick={() => setEntityModal({type: 'folder'})} className="px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase shadow-xl hover:bg-slate-900 transition-all">Ajouter Dossier</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                    <thead className="bg-slate-100 text-[10px] font-black uppercase tracking-widest border-b text-slate-900">
-                     <tr><th className="p-6">Numéro</th><th className="p-6">Nom</th><th className="p-6">Client</th><th className="p-6">Pôle</th><th className="p-6 text-right">Actions</th></tr>
+                     <tr><th className="p-6">Numéro</th><th className="p-6">Nom</th><th className="p-6">Pôle</th><th className="p-6 text-right">Actions</th></tr>
                    </thead>
                    <tbody className="divide-y divide-slate-100">
-                     {folders.filter(f => (poleFilter === 'all' || f.serviceType.toLowerCase() === poleFilter.toLowerCase()) && (f.name.toLowerCase().includes(searchQuery.toLowerCase()) || f.number.toLowerCase().includes(searchQuery.toLowerCase()))).map(f => (
+                     {folders.filter(f => (poleFilter === 'all' || f.serviceType?.toLowerCase() === poleFilter.toLowerCase()) && ((f.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || (f.number?.toLowerCase() || '').includes(searchQuery.toLowerCase()))).map(f => (
                        <tr key={f.id} className="text-xs hover:bg-slate-50 text-slate-900">
                          <td className="p-6 font-black text-slate-400">{f.number}</td>
                          <td className="p-6 font-bold">{f.name}</td>
-                         <td className="p-6 font-medium text-slate-500">{f.clientName}</td>
                          <td className="p-6"><span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full font-black uppercase text-[9px]">{f.serviceType}</span></td>
                          <td className="p-6 text-right"><div className="flex justify-end gap-2">
                            <button onClick={() => setEntityModal({type: 'folder', data: f})} className="p-2 text-slate-300 hover:text-indigo-600 transition-all"><Edit3 size={16}/></button>
@@ -471,7 +553,7 @@ const App: React.FC = () => {
                      <tr><th className="p-6">Nom</th><th className="p-6">Rôle</th><th className="p-6">Horaires</th><th className="p-6 text-right">Actions</th></tr>
                    </thead>
                    <tbody className="divide-y divide-slate-100">
-                     {collaborators.filter(c => (poleFilter === 'all' || c.department.toLowerCase() === poleFilter.toLowerCase()) && c.name.toLowerCase().includes(searchQuery.toLowerCase())).map(c => (
+                     {collaborators.filter(c => (poleFilter === 'all' || c.department?.toLowerCase() === poleFilter.toLowerCase()) && (c.name?.toLowerCase() || '').includes(searchQuery.toLowerCase())).map(c => (
                        <tr key={c.id} className="text-xs hover:bg-slate-50 text-slate-900">
                          <td className="p-6 font-bold">{c.name}</td>
                          <td className="p-6"><span className={`px-3 py-1 rounded-full font-bold text-[9px] uppercase tracking-widest ${c.role === UserRole.ADMIN ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>{c.role}</span></td>
@@ -492,9 +574,14 @@ const App: React.FC = () => {
       
       {entityModal && <EntityModal type={entityModal.type} initialData={entityModal.data} onSave={async (data) => {
         const payload: any = entityModal.type === 'collab' 
-          ? { id: data.id || `c_${Date.now()}`, name: data.name, department: data.department, role: data.role, password: data.password, hiring_date: data.hiringDate, start_time: data.startTime, end_time: data.endTime }
-          : { id: data.id || `f_${Date.now()}`, name: data.name, number: data.number, client_name: data.clientName, service_type: data.serviceType, budget_hours: data.budgetHours };
-        await supabase.from(entityModal.type === 'collab' ? 'collaborators' : 'folders').upsert([payload]);
+          ? { name: data.name, department: data.department, role: data.role, password: data.password, hiring_date: data.hiringDate, start_time: data.startTime, end_time: data.endTime }
+          : { name: data.name, number: data.number, client_name: data.clientName, service_type: data.serviceType, budget_hours: data.budgetHours };
+        
+        if (!data.id) payload.id = generateId();
+
+        if (data.id) await supabase.from(entityModal.type === 'collab' ? 'collaborators' : 'folders').update(payload).eq('id', data.id);
+        else await supabase.from(entityModal.type === 'collab' ? 'collaborators' : 'folders').insert([payload]);
+        
         showNotif('success', "Enregistré"); setEntityModal(null); fetchData();
       }} onClose={() => setEntityModal(null)} />}
     </div>
