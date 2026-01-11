@@ -1,17 +1,26 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, Save, Clock, FileText, Calendar, Folder as FolderIcon } from 'lucide-react';
-import { TimeEntry, Folder, PREDEFINED_TASKS } from '../types';
+import { TimeEntry, Folder, PREDEFINED_TASKS, Collaborator, UserRole } from '../types';
 
 interface Props {
   entry: TimeEntry;
   folders: Folder[];
+  currentUser: Collaborator;
   onSave: (updated: TimeEntry) => void;
   onClose: () => void;
 }
 
-const EntryEditModal: React.FC<Props> = ({ entry, folders, onSave, onClose }) => {
+const EntryEditModal: React.FC<Props> = ({ entry, folders, currentUser, onSave, onClose }) => {
   const [formData, setFormData] = useState<TimeEntry>({ ...entry });
+
+  // Filtrage des dossiers pour que le collaborateur ne voit que son pôle
+  const allowedFolders = useMemo(() => {
+    if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER) {
+      return folders;
+    }
+    return folders.filter(f => f.serviceType?.toLowerCase() === currentUser.department?.toLowerCase());
+  }, [folders, currentUser]);
 
   const handleFolderChange = (id: string) => {
     const folder = folders.find(f => f.id === id);
@@ -32,43 +41,43 @@ const EntryEditModal: React.FC<Props> = ({ entry, folders, onSave, onClose }) =>
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4">
-      <div className="bg-white rounded-[2.5rem] w-full max-w-xl shadow-2xl animate-in zoom-in duration-200 overflow-hidden">
-        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+    <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[500] p-4">
+      <div className="bg-white rounded-[3rem] w-full max-w-xl shadow-[0_32px_64px_-12px_rgba(0,0,0,0.4)] animate-in zoom-in duration-200 overflow-hidden border border-slate-100">
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
           <div>
-            <h3 className="text-xl font-black text-slate-800">Modifier la saisie</h3>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Dossier: {formData.folderName}</p>
+            <h3 className="text-2xl font-black text-slate-900 tracking-tight">Modifier la saisie</h3>
+            <p className="text-[10px] font-black text-indigo-600 uppercase tracking-[0.2em] mt-1">Dossier actuel : {formData.folderName}</p>
           </div>
-          <button onClick={onClose} className="p-3 bg-white text-slate-400 hover:text-red-500 rounded-2xl shadow-sm transition-all">
+          <button onClick={onClose} className="p-3 bg-white text-slate-400 hover:text-rose-500 rounded-2xl shadow-sm transition-all border border-slate-100">
             <X size={20} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-10 space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-2 gap-8">
             <div className="space-y-2 group">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 group-focus-within:text-indigo-600 transition-colors">
-                <Calendar size={14} /> Date
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <Calendar size={14} className="text-slate-300" /> Date
               </label>
               <input
                 type="date"
                 required
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-bold text-slate-700 transition-all"
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-bold text-slate-900 transition-all"
                 value={formData.date}
                 onChange={e => setFormData({ ...formData, date: e.target.value })}
               />
             </div>
 
             <div className="space-y-2 group">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 group-focus-within:text-indigo-600 transition-colors">
-                <Clock size={14} /> Durée (Heures)
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                <Clock size={14} className="text-slate-300" /> Durée (Heures)
               </label>
               <input
                 type="number"
-                step="0.25"
-                min="0.25"
+                step="0.5"
+                min="0.5"
                 required
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-black text-indigo-600 text-xl text-center transition-all"
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-black text-indigo-600 text-2xl text-center transition-all"
                 value={formData.duration}
                 onChange={e => setFormData({ ...formData, duration: parseFloat(e.target.value) })}
               />
@@ -76,36 +85,39 @@ const EntryEditModal: React.FC<Props> = ({ entry, folders, onSave, onClose }) =>
           </div>
 
           <div className="space-y-2 group">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 group-focus-within:text-indigo-600 transition-colors">
-              <FolderIcon size={14} /> Changer le Dossier
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <FolderIcon size={14} className="text-slate-300" /> Changer le Dossier ({currentUser.department})
             </label>
             <select
-              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-bold text-slate-700 transition-all"
+              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-black text-slate-900 transition-all appearance-none"
               value={formData.folderId}
               onChange={e => handleFolderChange(e.target.value)}
             >
-              {folders.map(f => <option key={f.id} value={f.id}>[{f.serviceType}] {f.number} - {f.name}</option>)}
+              {allowedFolders.map(f => (
+                <option key={f.id} value={f.id}>
+                  [{f.serviceType.toUpperCase()}] {f.number} - {f.name}
+                </option>
+              ))}
             </select>
           </div>
 
           <div className="space-y-2 group">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 group-focus-within:text-indigo-600 transition-colors">
-              <FileText size={14} /> Description des travaux
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <FileText size={14} className="text-slate-300" /> Description des travaux
             </label>
             <div className="space-y-3">
               <select
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-medium transition-all"
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-bold text-slate-600 transition-all"
                 value={PREDEFINED_TASKS.includes(formData.description) ? formData.description : ""}
                 onChange={e => e.target.value && setFormData({ ...formData, description: e.target.value })}
               >
-                <option value="">-- Utiliser une tâche type --</option>
+                <option value="">-- Sélectionner une tâche type --</option>
                 {PREDEFINED_TASKS.map(t => <option key={t} value={t}>{t}</option>)}
-                <option value="">Saisie personnalisée...</option>
               </select>
-              <input
-                type="text"
+              <textarea
                 required
-                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-medium transition-all"
+                rows={3}
+                className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-bold text-slate-900 transition-all"
                 placeholder="Détaillez vos travaux..."
                 value={formData.description}
                 onChange={e => setFormData({ ...formData, description: e.target.value })}
@@ -117,16 +129,16 @@ const EntryEditModal: React.FC<Props> = ({ entry, folders, onSave, onClose }) =>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-8 py-5 bg-slate-100 text-slate-600 font-black rounded-3xl hover:bg-slate-200 transition-all uppercase tracking-widest text-xs"
+              className="flex-1 px-8 py-5 bg-slate-100 text-slate-900 font-black rounded-3xl hover:bg-slate-200 transition-all uppercase tracking-widest text-[10px]"
             >
               Annuler
             </button>
             <button
               type="submit"
-              className="flex-1 px-8 py-5 bg-indigo-600 text-white font-black rounded-3xl hover:bg-indigo-700 shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-xs"
+              className="flex-1 px-8 py-5 bg-indigo-600 text-white font-black rounded-3xl hover:bg-slate-900 shadow-xl shadow-indigo-200 transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-[10px]"
             >
               <Save size={18} />
-              Enregistrer les modifications
+              Enregistrer
             </button>
           </div>
         </form>
