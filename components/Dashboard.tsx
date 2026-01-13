@@ -145,20 +145,20 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
                   {budgetData.map(f => (
                     <tr key={f.id} className="hover:bg-indigo-50/20 transition-colors">
                       <td className="p-6 font-bold text-slate-900">{f.name}</td>
-                      <td className="p-6 font-black text-indigo-600/40 text-xs">{f.number}</td>
-                      <td className="p-6 text-center font-black text-indigo-600">{f.budget}h</td>
+                      <td className={`p-6 font-black ${f.serviceType?.toLowerCase() === 'audit' ? 'text-blue-600/40' : 'text-orange-500/40'} text-xs`}>{f.number}</td>
+                      <td className={`p-6 text-center font-black ${f.serviceType?.toLowerCase() === 'audit' ? 'text-blue-600' : 'text-orange-500'}`}>{f.budget}h</td>
                       <td className="p-6 text-center font-black text-slate-900">{f.consumed}h</td>
                       <td className="p-6 min-w-[200px]">
                         <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                           <div 
-                            className={`h-full transition-all duration-1000 ${f.percent > 90 ? 'bg-rose-500' : 'bg-indigo-600'}`} 
+                            className={`h-full transition-all duration-1000 ${f.percent > 90 ? 'bg-rose-500' : (f.serviceType?.toLowerCase() === 'audit' ? 'bg-blue-600' : 'bg-orange-500')}`} 
                             style={{ width: `${Math.min(f.percent, 100)}%` }}
                           ></div>
                         </div>
                         <p className="text-[9px] font-black text-slate-400 mt-1 uppercase tracking-widest">{f.percent}% Utilisé</p>
                       </td>
                       <td className="p-6 text-right">
-                         <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${f.percent > 90 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                         <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${f.percent > 90 ? 'bg-rose-100 text-rose-700' : (f.serviceType?.toLowerCase() === 'audit' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}`}>
                            {f.percent > 90 ? 'Alerte' : 'OK'}
                          </span>
                       </td>
@@ -177,22 +177,26 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
         <div className="bg-white rounded-[3rem] border border-slate-200 shadow-xl overflow-hidden animate-in slide-in-from-bottom-4 p-10">
            <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3 mb-8"><TrendingUp className="text-indigo-600" /> Performance de l'équipe</h3>
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {collabData.map(c => (
-                <div key={c.name} className="p-8 bg-slate-50 rounded-3xl border border-slate-100 hover:border-indigo-500 transition-all">
-                  <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Collaborateur</p>
-                  <h4 className="text-lg font-black text-slate-900 mb-4">{c.name}</h4>
-                  <div className="flex justify-between items-end">
-                     <div>
-                       <p className="text-3xl font-black text-indigo-600">{c.hours}h</p>
-                       <p className="text-[9px] font-bold text-slate-400 uppercase">Heures produites</p>
-                     </div>
-                     <div className="text-right">
-                       <p className="text-xl font-black text-slate-900">{c.foldersCount}</p>
-                       <p className="text-[9px] font-bold text-slate-400 uppercase">Dossiers</p>
-                     </div>
+              {collabData.map(c => {
+                const collabObj = collaborators.find(col => col.name === c.name);
+                const isAudit = collabObj?.department?.toLowerCase() === 'audit';
+                return (
+                  <div key={c.name} className={`p-8 bg-slate-50 rounded-3xl border-2 transition-all ${isAudit ? 'border-blue-50 hover:border-blue-600' : 'border-orange-50 hover:border-orange-500'}`}>
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Collaborateur</p>
+                    <h4 className="text-lg font-black text-slate-900 mb-4">{c.name}</h4>
+                    <div className="flex justify-between items-end">
+                       <div>
+                         <p className={`text-3xl font-black ${isAudit ? 'text-blue-600' : 'text-orange-500'}`}>{c.hours}h</p>
+                         <p className="text-[9px] font-bold text-slate-400 uppercase">Heures produites</p>
+                       </div>
+                       <div className="text-right">
+                         <p className="text-xl font-black text-slate-900">{c.foldersCount}</p>
+                         <p className="text-[9px] font-bold text-slate-400 uppercase">Dossiers</p>
+                       </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
            </div>
         </div>
       )}

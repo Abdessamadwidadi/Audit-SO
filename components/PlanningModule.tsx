@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Plus, CheckCircle2, Calendar, Loader2, Trash2, User, ChevronLeft, ChevronRight, ClipboardList, Inbox, ExternalLink, X, Edit3, Save, Clock, RotateCcw, AlertCircle, History } from 'lucide-react';
 import { TaskAssignment, Collaborator, UserRole, ServiceType, TaskUrgency } from '../types';
 import { formatDateFR } from '../App';
+import ConfirmModal from './ConfirmModal';
 
 const URGENCY_MAP: Record<TaskUrgency, {label: string, color: string, bg: string}> = {
   normal: { label: 'Normal', color: 'text-slate-600', bg: 'bg-slate-100' },
@@ -31,6 +32,7 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
   const [weekOffset, setWeekOffset] = useState(0);
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [editTask, setEditTask] = useState<TaskAssignment | null>(null);
+  const [taskToDeleteId, setTaskToDeleteId] = useState<string | null>(null);
 
   const isAdminOrManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER;
 
@@ -69,24 +71,28 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
       if (!matchContext) return false;
 
       if (isAdminOrManager && poleFilter !== 'all' && t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
+      
       if (showAllTasks) return true;
 
       const taskDateStr = t.deadline;
       const taskDate = new Date(taskDateStr);
       taskDate.setHours(12, 0, 0, 0);
+      
       const inThisWeek = taskDate >= currentWeek.start && taskDate <= currentWeek.end;
-      const isCarryOver = weekOffset === 0 && t.status === 'todo' && taskDateStr < getLocalISODate(currentWeek.start);
-      return inThisWeek || isCarryOver;
+      const isPastTodo = t.status === 'todo' && taskDateStr < getLocalISODate(currentWeek.start);
+      
+      return inThisWeek || isPastTodo;
     });
 
     return filtered.sort((a, b) => {
-      const isCarryA = a.deadline < getLocalISODate(currentWeek.start) && a.status === 'todo';
-      const isCarryB = b.deadline < getLocalISODate(currentWeek.start) && b.status === 'todo';
-      if (isCarryA && !isCarryB) return -1;
-      if (!isCarryA && isCarryB) return 1;
+      // 1. Tri par statut : 'todo' en premier (haut), 'done' en dernier (bas)
+      if (a.status !== b.status) {
+        return a.status === 'todo' ? -1 : 1;
+      }
+      // 2. Par date d'échéance
       return a.deadline.localeCompare(b.deadline);
     });
-  }, [tasks, activeTab, currentUser.id, currentWeek, poleFilter, isAdminOrManager, showAllTasks, weekOffset, todayStr]);
+  }, [tasks, activeTab, currentUser.id, currentWeek, poleFilter, isAdminOrManager, showAllTasks, todayStr]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault(); 
@@ -120,8 +126,26 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
     showNotif('success', "Reporté à +7 jours");
   };
 
+  const confirmDeletion = async () => {
+    if (taskToDeleteId) {
+      await onDeleteTask(taskToDeleteId);
+      setTaskToDeleteId(null);
+      showNotif('success', "Mission supprimée");
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
+      {taskToDeleteId && (
+        <ConfirmModal 
+          title="Supprimer cette mission ?" 
+          message="Cette action est irréversible. Voulez-vous vraiment supprimer cette tâche du planning ?" 
+          onConfirm={confirmDeletion} 
+          onCancel={() => setTaskToDeleteId(null)} 
+          confirmLabel="Oui, supprimer" 
+        />
+      )}
+
       {editTask && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-[500] p-4">
            <div className="bg-white rounded-[3rem] w-full max-w-lg p-10 shadow-2xl border border-slate-200">
@@ -214,14 +238,14 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
                         {activeTab === 'received' ? team.find(c => String(c.id) === String(t.assignedById))?.name : team.find(c => String(c.id) === String(t.assignedToId))?.name}
                       </td>
                     )}
-                    <td className="p-5"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] uppercase ${t.pole === ServiceType.AUDIT ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>{t.pole}</span></td>
+                    <td className="p-5"><span className={`px-2 py-0.5 rounded-md font-black text-[9px] uppercase ${t.pole?.toLowerCase() === 'audit' ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>{t.pole}</span></td>
                     <td className="p-5"><span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${URGENCY_MAP[t.urgency].bg} ${URGENCY_MAP[t.urgency].color}`}>{URGENCY_MAP[t.urgency].label}</span></td>
                     <td className="p-5 font-bold text-slate-700">{formatDateFR(t.deadline)}</td>
                     <td className="p-5 text-right">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         {t.status === 'todo' && <button onClick={() => handleQuickReport(t)} title="Reporter à +7 jours" className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-600 hover:text-white transition-all shadow-sm"><RotateCcw size={14}/></button>}
                         <button onClick={() => setEditTask(t)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"><Edit3 size={14}/></button>
-                        <button onClick={() => onDeleteTask(t.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-all"><Trash2 size={14}/></button>
+                        <button onClick={() => setTaskToDeleteId(t.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-all"><Trash2 size={14}/></button>
                       </div>
                     </td>
                   </tr>
