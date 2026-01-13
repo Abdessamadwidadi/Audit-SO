@@ -42,7 +42,7 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
 
   const getAttendanceStatus = (dateStr: string, checkIn: string, planIn: string) => {
     const d = new Date(dateStr);
-    const day = d.getDay(); // 0 = Dimanche, 6 = Samedi
+    const day = d.getDay(); 
     const isWeekend = day === 0 || day === 6;
 
     if (!checkIn || checkIn === "--:--") {
@@ -55,7 +55,6 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
     const checkMin = h * 60 + m;
     const planMin = ph * 60 + pm;
     
-    // Marquer en retard si > 10 minutes après l'heure prévue
     if (checkMin > planMin + 10) return "En retard";
     return "À temps";
   };
@@ -66,16 +65,38 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
       ? collaborators.filter(c => String(c.id) === String(targetCollabId)) 
       : collaborators.filter(c => poleFilter === 'all' || c.department.toLowerCase() === poleFilter.toLowerCase());
 
-    const startDate = new Date();
-    if (timeRange === 'day') startDate.setDate(startDate.getDate());
-    else if (timeRange === 'week') startDate.setDate(startDate.getDate() - 7);
-    else if (timeRange === 'month') startDate.setMonth(startDate.getMonth() - 1);
-    else startDate.setMonth(startDate.getMonth() - 3);
+    const now = new Date();
+    let startDate = new Date();
+    let endDate = new Date();
+    
+    // FIX: Alignement des périodes sur le calendrier civil
+    if (timeRange === 'day') {
+      startDate = new Date(now);
+      endDate = new Date(now);
+    }
+    else if (timeRange === 'week') {
+      const day = now.getDay();
+      const diffToMonday = (day === 0 ? -6 : 1) - day;
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() + diffToMonday);
+      endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + 6);
+    }
+    else if (timeRange === 'month') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    }
+    else {
+      startDate.setMonth(now.getMonth() - 3);
+      endDate = new Date(now);
+    }
 
     const dates: string[] = [];
-    const curr = new Date();
     let iter = new Date(startDate);
-    while (iter <= curr) {
+    // S'assurer que iter ne dépasse pas aujourd'hui pour l'affichage si on est dans le futur de la période
+    const limitDate = endDate > now ? now : endDate;
+    
+    while (iter <= limitDate) {
       dates.push(iter.toISOString().split('T')[0]);
       iter.setDate(iter.getDate() + 1);
     }
@@ -96,7 +117,9 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
           status,
           isReal: !!record,
           collabId: collab.id,
-          pole: collab.department
+          pole: collab.department,
+          modifiedAt: record?.modifiedAt,
+          modifiedByName: record?.modifiedByName
         });
       });
     });
@@ -278,7 +301,14 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
                     <tr key={item.id} className={`hover:bg-indigo-50/50 transition-colors group ${item.status === 'Absent' || item.status === 'En retard' ? 'bg-rose-50/20' : item.status === 'Repos' ? 'bg-slate-50/10' : ''}`}>
                       <td className="p-8 font-bold text-slate-900">{formatDateFR(item.date)}</td>
                       <td className="p-8 font-black text-slate-900 group-hover:text-indigo-600 transition-colors uppercase">{item.collabName}</td>
-                      <td className="p-8 text-center font-black text-indigo-600 text-xl">{item.checkIn}</td>
+                      <td className="p-8 text-center">
+                        <div className="font-black text-indigo-600 text-xl">{item.checkIn}</div>
+                        {item.modifiedAt && (
+                          <div className="text-[8px] font-black italic text-rose-400 uppercase mt-1">
+                            Rectifié le {new Date(item.modifiedAt).toLocaleDateString('fr-FR')} par {item.modifiedByName}
+                          </div>
+                        )}
+                      </td>
                       <td className="p-8 text-center font-black text-slate-900 text-xl">{item.checkOut}</td>
                       <td className="p-8 text-center">
                         <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${item.status === 'Absent' || item.status === 'En retard' ? 'bg-rose-100 text-rose-700' : item.status === 'Repos' ? 'bg-slate-100 text-slate-400' : 'bg-emerald-100 text-emerald-700'}`}>

@@ -73,4 +73,6 @@ export interface Attendance {
   date: string;
   checkIn: string;
   checkOut?: string;
+  modifiedAt?: string;
+  modifiedByName?: string;
 }

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { TimeEntry, Folder, Attendance, Collaborator, ServiceType } from '../types';
+import { TimeEntry, Folder, Attendance, Collaborator, ServiceType, UserRole } from '../types';
 import { LayoutGrid, Target, TrendingUp, Sparkles, UserCheck, Timer, Loader2, Download, Briefcase, Activity, BarChart3, PieChart } from 'lucide-react';
 import { generateAIAnalysis } from '../services/geminiService';
 import { exportToExcel } from '../services/csvService';
@@ -26,7 +26,6 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
   const totalHours = filteredEntries.reduce((sum, e) => sum + e.duration, 0);
 
   const budgetData = useMemo(() => {
-    // On veut afficher TOUS les dossiers filtrés par pôle, même sans heures
     return folders
       .filter(f => !poleFilter || poleFilter === 'all' || f.serviceType?.toLowerCase() === poleFilter.toLowerCase())
       .map(f => {
@@ -41,13 +40,27 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
   const atRiskFolders = useMemo(() => budgetData.filter(f => f.percent > 90), [budgetData]);
 
   const collabData = useMemo(() => {
-    return collaborators
-      .filter(c => !poleFilter || poleFilter === 'all' || c.department?.toLowerCase() === poleFilter.toLowerCase())
+    const targetCollaborators = collaborators.filter(c => {
+      if (!poleFilter || poleFilter === 'all') return true;
+      const isManagement = c.role === UserRole.ADMIN || c.role === UserRole.MANAGER;
+      const matchesPole = c.department?.toLowerCase() === poleFilter.toLowerCase();
+      return isManagement || matchesPole;
+    });
+
+    return targetCollaborators
       .map(c => {
-        const userEntries = entries.filter(e => String(e.collaboratorId) === String(c.id));
+        const userEntries = entries.filter(e => 
+          String(e.collaboratorId) === String(c.id) &&
+          (!poleFilter || poleFilter === 'all' || e.service?.toLowerCase() === poleFilter.toLowerCase())
+        );
         const hours = userEntries.reduce((sum, e) => sum + e.duration, 0);
         const foldersCount = new Set(userEntries.map(e => e.folderId)).size;
-        return { name: c.name, hours, foldersCount };
+        return { name: c.name, hours, foldersCount, originalCollab: c };
+      })
+      .filter(c => {
+        if (!poleFilter || poleFilter === 'all') return c.hours > 0;
+        const matchesNativePole = c.originalCollab.department?.toLowerCase() === poleFilter.toLowerCase();
+        return c.hours > 0 || matchesNativePole;
       })
       .sort((a, b) => b.hours - a.hours);
   }, [collaborators, entries, poleFilter]);
@@ -178,15 +191,23 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
            <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3 mb-8"><TrendingUp className="text-indigo-600" /> Performance de l'équipe</h3>
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {collabData.map(c => {
-                const collabObj = collaborators.find(col => col.name === c.name);
-                const isAudit = collabObj?.department?.toLowerCase() === 'audit';
+                // FIX: Logique de couleur dynamique basée strictement sur le pôle affiché (Audit=Bleu, Expertise=Orange)
+                // Pour l'Admin et Managers, ils adoptent la couleur du pôle filtré.
+                const isAuditView = poleFilter.toLowerCase() === 'audit';
+                const isExpertiseView = poleFilter.toLowerCase() === 'expertise';
+                const isGlobalView = poleFilter === 'all';
+
+                let cardIsAudit = true;
+                if (isExpertiseView) cardIsAudit = false;
+                else if (isGlobalView) cardIsAudit = c.originalCollab?.department?.toLowerCase() === 'audit';
+
                 return (
-                  <div key={c.name} className={`p-8 bg-slate-50 rounded-3xl border-2 transition-all ${isAudit ? 'border-blue-50 hover:border-blue-600' : 'border-orange-50 hover:border-orange-500'}`}>
+                  <div key={c.name} className={`p-8 bg-slate-50 rounded-3xl border-2 transition-all ${cardIsAudit ? 'border-blue-50 hover:border-blue-600' : 'border-orange-50 hover:border-orange-500'}`}>
                     <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Collaborateur</p>
                     <h4 className="text-lg font-black text-slate-900 mb-4">{c.name}</h4>
                     <div className="flex justify-between items-end">
                        <div>
-                         <p className={`text-3xl font-black ${isAudit ? 'text-blue-600' : 'text-orange-500'}`}>{c.hours}h</p>
+                         <p className={`text-3xl font-black ${cardIsAudit ? 'text-blue-600' : 'text-orange-500'}`}>{c.hours}h</p>
                          <p className="text-[9px] font-bold text-slate-400 uppercase">Heures produites</p>
                        </div>
                        <div className="text-right">

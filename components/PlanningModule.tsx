@@ -72,8 +72,6 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
 
       if (isAdminOrManager && poleFilter !== 'all' && t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
       
-      if (showAllTasks) return true;
-
       const taskDateStr = t.deadline;
       const taskDate = new Date(taskDateStr);
       taskDate.setHours(12, 0, 0, 0);
@@ -85,11 +83,9 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
     });
 
     return filtered.sort((a, b) => {
-      // 1. Tri par statut : 'todo' en premier (haut), 'done' en dernier (bas)
       if (a.status !== b.status) {
         return a.status === 'todo' ? -1 : 1;
       }
-      // 2. Par date d'échéance
       return a.deadline.localeCompare(b.deadline);
     });
   }, [tasks, activeTab, currentUser.id, currentWeek, poleFilter, isAdminOrManager, showAllTasks, todayStr]);
@@ -175,7 +171,21 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
         <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
           <div className="md:col-span-4 space-y-1.5"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Nouvelle Mission</label><input type="text" placeholder="Mission à accomplir..." className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px] outline-none focus:border-indigo-500 transition-all" value={title} onChange={e => setTitle(e.target.value)} /></div>
           <div className="md:col-span-2 space-y-1.5"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Urgence</label><select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px]" value={urgency} onChange={e => setUrgency(e.target.value as any)}><option value="normal">Normale</option><option value="urgent">Urgente</option><option value="critique">Critique</option></select></div>
-          {isAdminOrManager && <div className="md:col-span-2 space-y-1.5"><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Pour</label><select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px]" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}><option value={currentUser.id}>Moi</option>{team.filter(c => String(c.id) !== String(currentUser.id)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
+          {isAdminOrManager && (
+            <div className="md:col-span-2 space-y-1.5">
+              <label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Pour</label>
+              <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px]" value={assigneeId} onChange={e => setAssigneeId(e.target.value)}>
+                <option value={currentUser.id}>Moi</option>
+                {team.filter(c => {
+                  if (String(c.id) === String(currentUser.id)) return false;
+                  // Afficher si c'est un manager/admin OU si ça correspond au pôle filtré
+                  const isManagement = c.role === UserRole.ADMIN || c.role === UserRole.MANAGER;
+                  const matchesPole = poleFilter === 'all' || c.department?.toLowerCase() === poleFilter.toLowerCase();
+                  return isManagement || matchesPole;
+                }).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
           <div className={isAdminOrManager ? "md:col-span-2 space-y-1.5" : "md:col-span-3 space-y-1.5"}><label className="text-[9px] font-black uppercase text-slate-400 ml-2 tracking-widest">Échéance</label><input type="date" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 text-[11px]" value={deadline} onChange={e => setDeadline(e.target.value)} /></div>
           <div className={isAdminOrManager ? "md:col-span-2" : "md:col-span-3"}><button type="submit" disabled={!title.trim() || loading} className="w-full h-12 bg-indigo-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg flex items-center justify-center gap-2 hover:bg-slate-900 transition-all">{loading ? <Loader2 className="animate-spin" size={16}/> : <Plus size={16}/>} Ajouter</button></div>
         </form>
@@ -189,16 +199,11 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
         </div>
         
         <div className="flex items-center gap-4">
-           {!showAllTasks ? (
-             <div className="flex items-center gap-4 bg-white px-6 py-2 rounded-2xl border border-slate-100 shadow-sm">
-               <button onClick={() => setWeekOffset(prev => prev - 1)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"><ChevronLeft size={18}/></button>
-               <div className="text-center min-w-[220px]"><p className="text-[10px] font-black text-slate-900 uppercase tracking-widest">{formatDateFR(getLocalISODate(currentWeek.start))} — {formatDateFR(getLocalISODate(currentWeek.end))}</p></div>
-               <button onClick={() => setWeekOffset(prev => prev + 1)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"><ChevronRight size={18}/></button>
-             </div>
-           ) : (
-             <div className="px-6 py-2.5 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-sm">Planning Global</div>
-           )}
-           <button onClick={() => { setShowAllTasks(!showAllTasks); setWeekOffset(0); }} className={`px-5 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all shadow-sm border ${showAllTasks ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-100'}`}>{showAllTasks ? 'RETOUR VUE HEBDO' : 'VOIR TOUT LE PLANNING'}</button>
+           <div className="flex items-center gap-4 bg-white px-6 py-2 rounded-2xl border border-slate-100 shadow-sm">
+             <button onClick={() => setWeekOffset(prev => prev - 1)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"><ChevronLeft size={18}/></button>
+             <div className="text-center min-w-[220px]"><p className="text-[10px] font-black text-slate-900 uppercase tracking-widest">{formatDateFR(getLocalISODate(currentWeek.start))} — {formatDateFR(getLocalISODate(currentWeek.end))}</p></div>
+             <button onClick={() => setWeekOffset(prev => prev + 1)} className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"><ChevronRight size={18}/></button>
+           </div>
         </div>
       </div>
 
@@ -212,6 +217,8 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
               {sortedTasks.map(t => {
                 const isFromPast = t.deadline < getLocalISODate(currentWeek.start) && t.status === 'todo';
                 const isLateThisWeek = t.status === 'todo' && t.deadline < todayStr && !isFromPast;
+
+                const canModify = isAdminOrManager || String(t.assignedById) === String(currentUser.id);
 
                 return (
                   <tr key={t.id} className={`group text-[11px] transition-all ${t.status === 'done' ? 'bg-slate-50/50 grayscale opacity-50' : (isFromPast || isLateThisWeek) ? 'bg-rose-50/30' : 'hover:bg-indigo-50/20'}`}>
@@ -242,11 +249,13 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
                     <td className="p-5"><span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${URGENCY_MAP[t.urgency].bg} ${URGENCY_MAP[t.urgency].color}`}>{URGENCY_MAP[t.urgency].label}</span></td>
                     <td className="p-5 font-bold text-slate-700">{formatDateFR(t.deadline)}</td>
                     <td className="p-5 text-right">
-                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {t.status === 'todo' && <button onClick={() => handleQuickReport(t)} title="Reporter à +7 jours" className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-600 hover:text-white transition-all shadow-sm"><RotateCcw size={14}/></button>}
-                        <button onClick={() => setEditTask(t)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"><Edit3 size={14}/></button>
-                        <button onClick={() => setTaskToDeleteId(t.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-all"><Trash2 size={14}/></button>
-                      </div>
+                      {canModify && (
+                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {t.status === 'todo' && <button onClick={() => handleQuickReport(t)} title="Reporter à +7 jours" className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-600 hover:text-white transition-all shadow-sm"><RotateCcw size={14}/></button>}
+                          <button onClick={() => setEditTask(t)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"><Edit3 size={14}/></button>
+                          <button onClick={() => setTaskToDeleteId(t.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-all"><Trash2 size={14}/></button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );

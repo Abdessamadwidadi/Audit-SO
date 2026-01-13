@@ -12,7 +12,8 @@ import Logo from './components/Logo';
 import { 
   LayoutDashboard, Clock, List, Users, FolderOpen, LogOut, 
   PlusCircle, Loader2, Search, Trash2, Download, Table, Edit3, 
-  Bell, AlertTriangle, CheckCircle2, Shield, X, Check, ChevronLeft, ChevronRight
+  Bell, AlertTriangle, CheckCircle2, Shield, X, Check, ChevronLeft, ChevronRight,
+  Crown, Star, Filter, User as UserIcon, ChevronDown
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { exportToExcel } from './services/csvService';
@@ -62,6 +63,7 @@ const App: React.FC = () => {
   const [collabSearchQuery, setCollabSearchQuery] = useState('');
   const [folderSearchQuery, setFolderSearchQuery] = useState('');
   const [poleFilter, setPoleFilter] = useState<string>('all');
+  const [historyCollabFilter, setHistoryCollabFilter] = useState<string>('all');
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [historyWeekOffset, setHistoryWeekOffset] = useState(0);
   
@@ -89,7 +91,6 @@ const App: React.FC = () => {
       setFolders(fData?.map(f => ({ id: String(f.id), name: f.name, number: f.number, clientName: f.client_name, serviceType: f.service_type as ServiceType, budgetHours: f.budget_hours })) || []);
       setEntries(eData?.map(e => ({ id: String(e.id), collaboratorId: String(e.collaborator_id), collaboratorName: e.collaborator_name, folderId: e.folder_id ? String(e.folder_id) : '', folderName: e.folder_name, folderNumber: e.folder_number, duration: e.duration, date: e.date, description: e.description, isOvertime: e.is_overtime, service: e.service as ServiceType })) || []);
       
-      // FIX: Mapping Correct des colonnes vers CamelCase pour le planning
       setTasks(tData?.map((t:any) => ({ 
         id: String(t.id), 
         title: t.title, 
@@ -101,7 +102,15 @@ const App: React.FC = () => {
         urgency: (t.urgency || 'normal') as any 
       })) || []);
 
-      setAttendance(aData?.map(a => ({ id: String(a.id), collaboratorId: String(a.collaborator_id), date: a.date, checkIn: a.check_in || "", checkOut: a.check_out || "" })) || []);
+      setAttendance(aData?.map(a => ({ 
+        id: String(a.id), 
+        collaboratorId: String(a.collaborator_id), 
+        date: a.date, 
+        checkIn: a.check_in || "", 
+        checkOut: a.check_out || "",
+        modifiedAt: a.modified_at,
+        modifiedByName: a.modified_by_name
+      })) || []);
       setIsDataLoaded(true);
     } catch (err) { showNotif('error', "Erreur de chargement"); setIsDataLoaded(true); }
   }, [supabase, showNotif]);
@@ -175,6 +184,7 @@ const App: React.FC = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const day = today.getDay();
+    // diffToMonday: Sun=0 -> -6, Mon=1 -> 0, Tue=2 -> -1, etc.
     const diffToMonday = (day === 0 ? -6 : 1) - day;
     const monday = new Date(today);
     monday.setDate(today.getDate() + diffToMonday + (historyWeekOffset * 7));
@@ -188,15 +198,18 @@ const App: React.FC = () => {
     if (!isAdminOrManager) list = list.filter(e => String(e.collaboratorId) === String(currentUserId));
     if (poleFilter !== 'all') list = list.filter(e => e.service?.toLowerCase() === poleFilter.toLowerCase());
     
-    // Filtre par semaine
     list = list.filter(e => e.date >= currentHistoryWeek.start && e.date <= currentHistoryWeek.end);
+
+    if (historyCollabFilter !== 'all') {
+      list = list.filter(e => String(e.collaboratorId) === historyCollabFilter);
+    }
 
     if (searchQuery.trim()) {
       const s = searchQuery.toLowerCase();
       list = list.filter(e => e.collaboratorName.toLowerCase().includes(s) || e.folderName.toLowerCase().includes(s) || e.description.toLowerCase().includes(s));
     }
     return list;
-  }, [entries, searchQuery, poleFilter, currentUserId, isAdminOrManager, currentHistoryWeek]);
+  }, [entries, searchQuery, poleFilter, historyCollabFilter, currentUserId, isAdminOrManager, currentHistoryWeek]);
 
   const filteredCollaborators = useMemo(() => {
     let list = collaborators;
@@ -255,15 +268,46 @@ const App: React.FC = () => {
           <p className="text-indigo-400 font-black text-[11px] uppercase tracking-[0.6em] opacity-60">Cabinet d'Audit & Conseil</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full max-w-7xl">
-          {collaborators.map(c => (
-            <button key={c.id} onClick={() => setLoginStep({collab: c})} className="group bg-white/5 backdrop-blur-sm p-8 rounded-[3rem] border border-white/10 hover:border-indigo-500 hover:bg-white/10 transition-all text-left">
-              <h3 className="text-2xl font-black text-white group-hover:text-indigo-400">{c.name}</h3>
-              <div className="flex items-center gap-3 mt-4">
-                <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${c.department?.toLowerCase() === 'audit' ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>{c.department}</span>
-                <span className="text-[9px] font-black text-white/30 uppercase tracking-widest">{c.role}</span>
-              </div>
-            </button>
-          ))}
+          {collaborators.map(c => {
+            const isAdmin = c.role === UserRole.ADMIN;
+            return (
+              <button 
+                key={c.id} 
+                onClick={() => setLoginStep({collab: c})} 
+                className={`group relative overflow-hidden p-8 rounded-[3rem] border transition-all text-left flex flex-col justify-between min-h-[180px] ${isAdmin ? 'bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#0f172a] border-amber-500/40 shadow-[0_20px_50px_rgba(245,158,11,0.15)] ring-1 ring-amber-500/20' : 'bg-white/5 backdrop-blur-sm border-white/10 hover:border-indigo-500 hover:bg-white/10'}`}
+              >
+                {isAdmin && (
+                  <div className="absolute top-4 right-6 flex items-center gap-2">
+                    <Crown className="text-amber-500 animate-pulse" size={20} />
+                  </div>
+                )}
+                
+                <div>
+                  <h3 className={`text-2xl font-black mb-1 transition-all ${isAdmin ? 'text-amber-50 group-hover:text-amber-400' : 'text-white group-hover:text-indigo-400'}`}>
+                    {c.name}
+                  </h3>
+                  <p className={`text-[10px] font-black uppercase tracking-[0.2em] opacity-40 mb-4 ${isAdmin ? 'text-amber-200' : 'text-slate-400'}`}>
+                    {isAdmin ? 'Direction • Le Boss' : c.role}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 mt-auto">
+                  {isAdmin ? (
+                    <>
+                      <span className="px-3 py-1 bg-blue-600 text-white rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg shadow-blue-900/40">Audit</span>
+                      <span className="px-3 py-1 bg-orange-500 text-white rounded-full text-[8px] font-black uppercase tracking-widest shadow-lg shadow-orange-900/40">Expertise</span>
+                    </>
+                  ) : (
+                    <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${c.department?.toLowerCase() === 'audit' ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>
+                      {c.department}
+                    </span>
+                  )}
+                </div>
+                
+                {isAdmin && <div className="absolute -bottom-12 -right-12 w-32 h-32 bg-amber-500/5 blur-[60px] rounded-full group-hover:bg-amber-500/10 transition-all"></div>}
+              </button>
+            );
+          })}
         </div>
       </div>
     );
@@ -354,7 +398,28 @@ const App: React.FC = () => {
           {view === 'history' && (
             <div className="space-y-8 animate-in fade-in">
               <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                <div className="flex-grow max-w-md relative"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><input type="text" placeholder="Rechercher..." className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl font-bold text-xs text-slate-900 outline-none" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div>
+                <div className="flex-grow flex items-center gap-4 max-w-2xl">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+                    <input type="text" placeholder="Rechercher..." className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl font-bold text-xs text-slate-900 outline-none shadow-sm" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                  </div>
+                  {isAdminOrManager && (
+                    <div className="relative w-64">
+                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                      <select 
+                        className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-2xl font-black text-[9px] uppercase tracking-widest outline-none shadow-sm text-slate-900 focus:border-indigo-500 transition-all appearance-none cursor-pointer"
+                        value={historyCollabFilter}
+                        onChange={e => setHistoryCollabFilter(e.target.value)}
+                      >
+                        <option value="all">Tous les collaborateurs</option>
+                        {collaborators.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                        <ChevronDown size={14} />
+                      </div>
+                    </div>
+                  )}
+                </div>
                 
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-4 bg-white px-6 py-2 rounded-2xl border border-slate-100 shadow-sm">
@@ -409,17 +474,15 @@ const App: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-slate-100 text-[10px] font-black uppercase border-b text-slate-400">
-                    <tr><th className="p-8">Nom</th><th className="p-8">Pôle</th><th className="p-8">Rôle</th><th className="p-8">Pointage</th><th className="p-8 text-right">Actions</th></tr>
+                    <tr><th className="p-8">Nom</th><th className="p-8">Pôle</th><th className="p-8">Rôle</th><th className="p-8 text-right">Actions</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredCollaborators.map(c => {
-                       const att = attendance.find(a => a.date === new Date().toISOString().split('T')[0] && String(a.collaboratorId) === String(c.id));
                        return (
                         <tr key={c.id} className="text-xs hover:bg-blue-50/20 transition-all">
                           <td className="p-8 font-bold text-slate-900 text-sm">{c.name}</td>
                           <td className="p-8"><span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${c.department?.toLowerCase() === 'audit' ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>{c.department}</span></td>
                           <td className="p-8"><span className="px-4 py-1.5 bg-slate-100 rounded-full font-black text-[9px] uppercase text-slate-500">{c.role}</span></td>
-                          <td className="p-8">{att ? <span className="text-emerald-600 font-black">Présent ({att.checkIn})</span> : <span className="text-rose-400 font-black">Absent</span>}</td>
                           <td className="p-8 text-right space-x-2">
                             <button onClick={() => setEntityModal({type: 'collab', data: c})} className="p-3 bg-slate-50 text-slate-400 hover:text-blue-600 rounded-xl transition-all shadow-sm"><Edit3 size={16}/></button>
                             <button onClick={() => setDeleteConfirm({id: c.id, table: 'collaborators', label: `le collaborateur ${c.name}`})} className="p-3 bg-slate-50 text-slate-300 hover:text-rose-600 rounded-xl transition-all shadow-sm"><Trash2 size={16}/></button>
@@ -473,8 +536,15 @@ const App: React.FC = () => {
           }} onCheckOut={async (id, t) => { 
             await supabase.from('attendance').update({ check_out: t }).eq('id', id); fetchData(); showNotif('success', "Départ enregistré");
           }} onUpdateAttendance={async (id, upd) => { 
-            const p = { date: upd.date, check_in: upd.checkIn, check_out: upd.checkOut };
-            await supabase.from('attendance').update(p).eq('id', id); fetchData(); showNotif('success', "Mis à jour"); 
+            const now = new Date().toISOString();
+            const p = { 
+              date: upd.date, 
+              check_in: upd.checkIn, 
+              check_out: upd.checkOut,
+              modified_at: now,
+              modified_by_name: currentUser.name
+            };
+            await supabase.from('attendance').update(p).eq('id', id); fetchData(); showNotif('success', "Pointage rectifié avec traçabilité"); 
           }} onExport={handleExport} poleFilter={poleFilter} />}
           
           {view === 'planning' && <PlanningModule currentUser={currentUser} tasks={tasks} team={collaborators} showNotif={showNotif} onAddTask={async (t) => {
