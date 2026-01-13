@@ -1,16 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, User, Briefcase, Hash, Calendar, Target, Shield, Timer } from 'lucide-react';
+// Added AlertTriangle to the imports from lucide-react
+import { X, Save, User, Briefcase, Hash, Calendar, Target, Shield, Timer, AlertTriangle } from 'lucide-react';
 import { ServiceType, UserRole, Collaborator, Folder } from '../types';
 
 interface Props {
   type: 'collab' | 'folder';
   initialData?: any;
+  currentUser: Collaborator;
   onSave: (data: any) => void;
   onClose: () => void;
 }
 
-const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) => {
+const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, onClose }) => {
   const [formData, setFormData] = useState<any>(
     type === 'collab' 
       ? { name: '', department: ServiceType.AUDIT, hiringDate: new Date().toISOString().split('T')[0], role: UserRole.COLLABORATOR, password: '', startTime: '09:00', endTime: '18:00' }
@@ -35,6 +37,8 @@ const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) =>
     onSave(formData);
   };
 
+  const isUserAdmin = currentUser.role === UserRole.ADMIN;
+
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[250] p-4">
       <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3)] animate-in zoom-in duration-200">
@@ -52,15 +56,28 @@ const EntityModal: React.FC<Props> = ({ type, initialData, onSave, onClose }) =>
             <>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Nom Complet</label>
-                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="OUIAM..." />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Shield size={10} /> Code d'accès (Password)</label>
-                <input required className="w-full p-4 bg-slate-50 border border-indigo-200 rounded-2xl font-black text-center text-indigo-600 tracking-[0.5em] text-2xl outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="0000" />
+                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nom..." />
               </div>
               
+              {isUserAdmin && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Shield size={10} /> Code d'accès (PIN)</label>
+                  <input required className="w-full p-4 bg-slate-50 border border-indigo-200 rounded-2xl font-black text-center text-indigo-600 tracking-[0.5em] text-2xl outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="0000" />
+                  <p className="text-[8px] font-bold text-slate-400 uppercase text-center mt-1">Seul l'administrateur peut réinitialiser ce code</p>
+                </div>
+              )}
+              
+              {!isUserAdmin && type === 'collab' && (
+                <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
+                  <AlertTriangle className="text-amber-600 shrink-0" size={16} />
+                  <p className="text-[9px] font-bold text-amber-800 uppercase leading-relaxed">
+                    Accès restreint : Seul l'Admin principal peut modifier les accès de sécurité des collaborateurs.
+                  </p>
+                </div>
+              )}
+              
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Timer size={10} /> Planning Horaire (Pause 1h30)</label>
+                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Timer size={10} /> Planning Horaire</label>
                 <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none" value={currentSchedule} onChange={handleScheduleChange}>
                   <option value="08:00-17:00">08:00 à 17:00</option>
                   <option value="09:00-18:00">09:00 à 18:00</option>

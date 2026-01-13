@@ -69,31 +69,38 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
     let startDate = new Date();
     let endDate = new Date();
     
-    // FIX: Alignement des périodes sur le calendrier civil
+    // FIX: Alignement strict sur les périodes civiles
     if (timeRange === 'day') {
       startDate = new Date(now);
+      startDate.setHours(0, 0, 0, 0);
       endDate = new Date(now);
+      endDate.setHours(23, 59, 59, 999);
     }
     else if (timeRange === 'week') {
       const day = now.getDay();
       const diffToMonday = (day === 0 ? -6 : 1) - day;
       startDate = new Date(now);
       startDate.setDate(now.getDate() + diffToMonday);
+      startDate.setHours(0, 0, 0, 0);
       endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 6);
+      endDate.setHours(23, 59, 59, 999);
     }
     else if (timeRange === 'month') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     }
     else {
-      startDate.setMonth(now.getMonth() - 3);
+      // Pour l'historique complet, on recule de 3 mois de manière stricte (début de mois)
+      startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1, 0, 0, 0, 0);
       endDate = new Date(now);
+      endDate.setHours(23, 59, 59, 999);
     }
 
     const dates: string[] = [];
     let iter = new Date(startDate);
-    // S'assurer que iter ne dépasse pas aujourd'hui pour l'affichage si on est dans le futur de la période
+    
+    // S'assurer que iter ne dépasse pas aujourd'hui pour l'affichage si on est dans le futur de la période (ex: fin de semaine pas encore atteinte)
     const limitDate = endDate > now ? now : endDate;
     
     while (iter <= limitDate) {

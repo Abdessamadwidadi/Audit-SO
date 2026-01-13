@@ -13,7 +13,7 @@ import {
   LayoutDashboard, Clock, List, Users, FolderOpen, LogOut, 
   PlusCircle, Loader2, Search, Trash2, Download, Table, Edit3, 
   Bell, AlertTriangle, CheckCircle2, Shield, X, Check, ChevronLeft, ChevronRight,
-  Crown, Star, Filter, User as UserIcon, ChevronDown
+  Crown, Star, Filter, User as UserIcon, ChevronDown, Lock, Key
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { exportToExcel } from './services/csvService';
@@ -58,6 +58,7 @@ const App: React.FC = () => {
   const [entityModal, setEntityModal] = useState<{type: 'collab' | 'folder', data?: any} | null>(null);
   const [editEntryModal, setEditEntryModal] = useState<TimeEntry | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{id: string, table: string, label: string} | null>(null);
+  const [passwordChangeModal, setPasswordChangeModal] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [collabSearchQuery, setCollabSearchQuery] = useState('');
@@ -184,12 +185,13 @@ const App: React.FC = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const day = today.getDay();
-    // diffToMonday: Sun=0 -> -6, Mon=1 -> 0, Tue=2 -> -1, etc.
     const diffToMonday = (day === 0 ? -6 : 1) - day;
     const monday = new Date(today);
     monday.setDate(today.getDate() + diffToMonday + (historyWeekOffset * 7));
+    monday.setHours(0, 0, 0, 0); // Strict start
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999); // Strict end
     return { start: getLocalISODate(monday), end: getLocalISODate(sunday) };
   }, [historyWeekOffset]);
 
@@ -210,6 +212,19 @@ const App: React.FC = () => {
     }
     return list;
   }, [entries, searchQuery, poleFilter, historyCollabFilter, currentUserId, isAdminOrManager, currentHistoryWeek]);
+
+  // Filtrage des collaborateurs pour le select dropdown
+  const filteredCollabOptions = useMemo(() => {
+    let list = collaborators;
+    if (poleFilter !== 'all') {
+      list = list.filter(c => {
+        const isManagement = c.role === UserRole.ADMIN || c.role === UserRole.MANAGER;
+        const matchesPole = c.department?.toLowerCase() === poleFilter.toLowerCase();
+        return isManagement || matchesPole;
+      });
+    }
+    return list;
+  }, [collaborators, poleFilter]);
 
   const filteredCollaborators = useMemo(() => {
     let list = collaborators;
@@ -236,6 +251,17 @@ const App: React.FC = () => {
     if (customData) { exportToExcel(fileName, customData); return; }
     const data = [["DATE", "COLLABORATEUR", "DOSSIER", "DESCRIPTION", "HEURES"], ...filteredHistory.map(e => [formatDateFR(e.date), e.collaboratorName, e.folderName, e.description, e.duration])];
     exportToExcel(fileName, data);
+  };
+
+  const handleChangePassword = async (newPin: string) => {
+    if (!currentUser) return;
+    try {
+      await supabase.from('collaborators').update({ password: newPin }).eq('id', currentUser.id);
+      showNotif('success', "Votre code PIN a été mis à jour");
+      fetchData();
+    } catch (err) {
+      showNotif('error', "Erreur lors de la mise à jour");
+    }
   };
 
   if (!isDataLoaded) return <div className="min-h-screen bg-[#020617] flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={48} /></div>;
@@ -321,6 +347,42 @@ const App: React.FC = () => {
         </div>
       )}
 
+      {passwordChangeModal && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[500] p-4">
+          <div className="bg-white rounded-[3rem] w-full max-w-sm p-12 text-center shadow-2xl animate-in zoom-in">
+            <Key size={48} className="mx-auto text-indigo-600 mb-6" />
+            <h3 className="text-xl font-black text-slate-900 mb-2 uppercase">Modifier mon PIN</h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-10">Sécurisez votre accès personnel</p>
+            <div className="space-y-4">
+              <input 
+                type="password" 
+                placeholder="Nouveau PIN (4-6 chiffres)" 
+                maxLength={6} 
+                className="w-full p-6 border-2 border-slate-100 rounded-[2.5rem] font-black text-center text-3xl tracking-[0.4em] text-indigo-600 outline-none" 
+                id="new_pin_input"
+              />
+              <div className="grid grid-cols-2 gap-4 pt-6">
+                <button onClick={() => setPasswordChangeModal(false)} className="p-5 bg-slate-100 rounded-3xl font-black text-[10px] uppercase tracking-widest text-slate-900">Annuler</button>
+                <button 
+                  onClick={() => {
+                    const el = document.getElementById('new_pin_input') as HTMLInputElement;
+                    if (el.value.length >= 4) {
+                      handleChangePassword(el.value);
+                      setPasswordChangeModal(false);
+                    } else {
+                      showNotif('error', "PIN trop court (min 4 chiffres)");
+                    }
+                  }} 
+                  className="p-5 bg-indigo-600 text-white rounded-3xl font-black text-[10px] uppercase shadow-xl"
+                >
+                  Valider
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <aside className="w-80 bg-[#0f172a] text-white p-10 flex flex-col shrink-0 shadow-2xl">
         <div className="mb-12 flex justify-center"><Logo variant="both" size={42} showText={false} /></div>
         <nav className="space-y-3 flex-grow">
@@ -334,7 +396,15 @@ const App: React.FC = () => {
             ))}
           </div>}
         </nav>
-        <button onClick={() => { setCurrentUserId(null); localStorage.removeItem(STORE.USER_ID); }} className="mt-auto w-full flex items-center gap-2 text-slate-500 hover:text-rose-400 font-black uppercase text-[9px] tracking-widest p-4"><LogOut size={16}/> Déconnexion</button>
+        
+        <div className="mt-auto space-y-2">
+          <button onClick={() => setPasswordChangeModal(true)} className="w-full flex items-center gap-3 text-slate-400 hover:text-white font-black uppercase text-[9px] tracking-widest p-4 transition-colors">
+            <Lock size={16}/> Sécurité PIN
+          </button>
+          <button onClick={() => { setCurrentUserId(null); localStorage.removeItem(STORE.USER_ID); }} className="w-full flex items-center gap-3 text-slate-500 hover:text-rose-400 font-black uppercase text-[9px] tracking-widest p-4 transition-colors">
+            <LogOut size={16}/> Déconnexion
+          </button>
+        </div>
       </aside>
 
       <main className="flex-grow p-16 overflow-y-auto relative bg-[#fdfdfe]">
@@ -412,7 +482,7 @@ const App: React.FC = () => {
                         onChange={e => setHistoryCollabFilter(e.target.value)}
                       >
                         <option value="all">Tous les collaborateurs</option>
-                        {collaborators.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        {filteredCollabOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                       <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
                         <ChevronDown size={14} />
@@ -554,11 +624,15 @@ const App: React.FC = () => {
         </div>
       </main>
       
-      {entityModal && <EntityModal type={entityModal.type} initialData={entityModal.data} onSave={async (d) => {
+      {entityModal && <EntityModal type={entityModal.type} initialData={entityModal.data} currentUser={currentUser} onSave={async (d) => {
         if (entityModal.type === 'collab') {
-          const p = { name: d.name, department: d.department, hiring_date: d.hiringDate, role: d.role, password: d.password, start_time: d.startTime, end_time: d.endTime };
+          const p: any = { name: d.name, department: d.department, hiring_date: d.hiringDate, role: d.role, start_time: d.startTime, end_time: d.endTime };
+          // Seul l'Admin peut enregistrer/réinitialiser le mot de passe dans le modal de gestion
+          if (currentUser.role === UserRole.ADMIN) {
+            p.password = d.password;
+          }
           if (d.id) await supabase.from('collaborators').update(p).eq('id', d.id);
-          else await supabase.from('collaborators').insert([{ ...p, id: generateId() }]);
+          else await supabase.from('collaborators').insert([{ ...p, id: generateId(), password: d.password || '0000' }]);
         } else {
           const p = { name: d.name, number: d.number, client_name: d.clientName, service_type: d.serviceType, budget_hours: d.budget_hours };
           if (d.id) await supabase.from('folders').update(p).eq('id', d.id);
