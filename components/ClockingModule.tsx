@@ -77,14 +77,14 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
     let startDate = new Date();
     let endDate = new Date();
     
-    // Verrouillage strict des périodes
+    // Verrouillage strict des périodes civiles
     if (timeRange === 'day') {
       startDate = new Date(now);
       endDate = new Date(now);
     }
     else if (timeRange === 'week') {
-      const day = now.getDay();
-      // On calcule le Lundi de la semaine en cours
+      const day = now.getDay(); // 0=Sun, 1=Mon...
+      // On calcule le Lundi de la semaine en cours (Lundi=1)
       const diffToMonday = (day === 0 ? -6 : 1) - day;
       startDate = new Date(now);
       startDate.setDate(now.getDate() + diffToMonday);
@@ -105,19 +105,20 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
     const dates: string[] = [];
     let iter = new Date(startDate);
     
-    // On ne génère des lignes que jusqu'à aujourd'hui au maximum pour la période sélectionnée
-    // Cela évite d'afficher des "Absents" dans le futur de la semaine/mois
-    const todayObj = new Date();
-    const limitDate = endDate > todayObj ? todayObj : endDate;
+    // Normalisation des dates pour comparaison stricte sans effet de bord d'heures
+    const startCompare = toLocalISO(startDate);
+    const endCompare = toLocalISO(endDate);
+    const todayCompare = toLocalISO(now);
     
-    // On normalise à minuit pour la comparaison
-    iter.setHours(0, 0, 0, 0);
-    const limitCompare = new Date(limitDate);
-    limitCompare.setHours(0, 0, 0, 0);
-
-    while (iter <= limitCompare) {
+    // On ne génère des lignes que jusqu'à aujourd'hui au maximum pour la période sélectionnée (ou la fin de période si c'est déjà passé)
+    const limitDateStr = endCompare > todayCompare ? todayCompare : endCompare;
+    
+    // Boucle de génération des dates dans l'intervalle strict
+    let safety = 0;
+    while (toLocalISO(iter) <= limitDateStr && safety < 100) {
       dates.push(toLocalISO(iter));
       iter.setDate(iter.getDate() + 1);
+      safety++;
     }
     dates.reverse();
 

@@ -620,7 +620,13 @@ const App: React.FC = () => {
           {view === 'planning' && <PlanningModule currentUser={currentUser} tasks={tasks} team={collaborators} showNotif={showNotif} onAddTask={async (t) => {
             const p = { id: generateId(), title: t.title, assigned_to_id: t.assignedToId, assigned_by_id: currentUserId, pole: t.pole || currentUser.department, deadline: t.deadline, status: 'todo', urgency: t.urgency || 'normal' };
             await supabase.from('tasks').insert([p]); fetchData();
-          }} onUpdateTask={async (id, upd) => { await supabase.from('tasks').update(upd).eq('id', id); fetchData(); }} onDeleteTask={async (id) => { await supabase.from('tasks').delete().eq('id', id); fetchData(); }} poleFilter={poleFilter} />}
+          }} onUpdateTask={async (id, upd) => { 
+            const mapped: any = { ...upd };
+            if (upd.assignedToId) { mapped.assigned_to_id = upd.assignedToId; delete mapped.assignedToId; }
+            if (upd.assignedById) { mapped.assigned_by_id = upd.assignedById; delete mapped.assignedById; }
+            await supabase.from('tasks').update(mapped).eq('id', id); 
+            fetchData(); 
+          }} onDeleteTask={async (id) => { await supabase.from('tasks').delete().eq('id', id); fetchData(); }} poleFilter={poleFilter} />}
         </div>
       </main>
       

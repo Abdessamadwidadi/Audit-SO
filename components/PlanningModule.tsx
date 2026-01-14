@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Plus, CheckCircle2, Calendar, Loader2, Trash2, User, ChevronLeft, ChevronRight, ClipboardList, Inbox, ExternalLink, X, Edit3, Save, Clock, RotateCcw, AlertCircle, History } from 'lucide-react';
+import { Plus, CheckCircle2, Calendar, Loader2, Trash2, User, ChevronLeft, ChevronRight, ClipboardList, Inbox, ExternalLink, X, Edit3, Save, Clock, RotateCcw, AlertCircle, History, UserPlus } from 'lucide-react';
 import { TaskAssignment, Collaborator, UserRole, ServiceType, TaskUrgency } from '../types';
 import { formatDateFR } from '../App';
 import ConfirmModal from './ConfirmModal';
@@ -33,6 +33,10 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
   const [showAllTasks, setShowAllTasks] = useState(false);
   const [editTask, setEditTask] = useState<TaskAssignment | null>(null);
   const [taskToDeleteId, setTaskToDeleteId] = useState<string | null>(null);
+  
+  // State pour la délégation
+  const [delegatingTask, setDelegatingTask] = useState<TaskAssignment | null>(null);
+  const [targetAssigneeId, setTargetAssigneeId] = useState<string>('');
 
   const isAdminOrManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER;
 
@@ -94,12 +98,22 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
     e.preventDefault(); 
     if (!title.trim()) return; 
     setLoading(true);
+
+    // Détermination du pôle contextuel (Audit ou Expertise)
+    let taskPole = currentUser.department;
+    if (poleFilter && poleFilter !== 'all') {
+      taskPole = poleFilter as ServiceType;
+    } else if (isAdminOrManager) {
+      // Si en mode global, on prend le pôle de celui à qui on assigne
+      taskPole = team.find(c => String(c.id) === String(assigneeId))?.department || currentUser.department;
+    }
+
     try {
       await onAddTask({ 
         title: title.trim(), 
         assignedToId: isAdminOrManager ? assigneeId : currentUser.id, 
         deadline, 
-        pole: isAdminOrManager ? team.find(c => String(c.id) === String(assigneeId))?.department : currentUser.department, 
+        pole: taskPole, 
         urgency 
       });
       setTitle(''); 
@@ -122,6 +136,25 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
     showNotif('success', "Reporté à +7 jours");
   };
 
+  const handleDelegate = async () => {
+    if (!delegatingTask || !targetAssigneeId) return;
+    setLoading(true);
+    try {
+      // MISE À JOUR STRICTE DU PROPRIÉTAIRE (assignedToId)
+      // On remplace l'ID du Manager par l'ID du collaborateur choisi.
+      // Le créateur (assignedById) reste le Manager, ce qui fait passer la tâche dans "Déléguées" pour lui.
+      await onUpdateTask(delegatingTask.id, { 
+        assignedToId: targetAssigneeId
+        // Le pôle reste identique comme demandé par la directive de conservation des données
+      });
+      setDelegatingTask(null);
+      setTargetAssigneeId('');
+      showNotif('success', "Mission déléguée avec succès");
+    } catch (err) {
+      showNotif('error', "Erreur lors de la délégation");
+    } finally { setLoading(false); }
+  };
+
   const confirmDeletion = async () => {
     if (taskToDeleteId) {
       await onDeleteTask(taskToDeleteId);
@@ -129,6 +162,18 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
       showNotif('success', "Mission supprimée");
     }
   };
+
+  // Liste des collaborateurs éligibles pour la délégation (même pôle que la tâche ou direction)
+  const delegateOptions = useMemo(() => {
+    if (!delegatingTask) return [];
+    return team.filter(c => {
+      if (String(c.id) === String(currentUser.id)) return false;
+      const isManagement = c.role === UserRole.ADMIN || c.role === UserRole.MANAGER;
+      // Filtrage strict : on ne propose que les membres rattachés au pôle de la mission (Audit ou Expertise)
+      const matchesPole = c.department === delegatingTask.pole;
+      return isManagement || matchesPole;
+    });
+  }, [team, currentUser, delegatingTask]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -140,6 +185,46 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
           onCancel={() => setTaskToDeleteId(null)} 
           confirmLabel="Oui, supprimer" 
         />
+      )}
+
+      {/* Modal de Délégation */}
+      {delegatingTask && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[500] p-4">
+           <div className="bg-white rounded-[3rem] w-full max-w-md p-10 shadow-2xl border border-slate-200">
+              <div className="flex justify-between items-center mb-8 text-center w-full">
+                 <div className="w-full">
+                    <UserPlus size={40} className="mx-auto text-indigo-600 mb-4" />
+                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Déléguer la mission</h3>
+                    <p className="text-[10px] font-bold text-slate-400 mt-1">{delegatingTask.title}</p>
+                    <span className={`inline-block px-2 py-0.5 mt-2 rounded-md font-black text-[8px] uppercase ${delegatingTask.pole?.toLowerCase() === 'audit' ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white'}`}>{delegatingTask.pole}</span>
+                 </div>
+              </div>
+              <div className="space-y-6">
+                 <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">Choisir un collaborateur ({delegatingTask.pole})</label>
+                    <select 
+                      className="w-full p-5 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10 transition-all"
+                      value={targetAssigneeId}
+                      onChange={e => setTargetAssigneeId(e.target.value)}
+                    >
+                      <option value="">-- Sélectionner --</option>
+                      {delegateOptions.map(c => <option key={c.id} value={c.id}>{c.name} {c.role !== UserRole.COLLABORATOR ? `(${c.role})` : ''}</option>)}
+                    </select>
+                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4 mt-10">
+                 <button onClick={() => { setDelegatingTask(null); setTargetAssigneeId(''); }} className="p-5 bg-slate-100 rounded-2xl font-black text-[10px] uppercase text-slate-600">Annuler</button>
+                 <button 
+                  disabled={!targetAssigneeId || loading} 
+                  onClick={handleDelegate} 
+                  className="p-5 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg flex items-center justify-center gap-2 hover:bg-slate-900 transition-all disabled:opacity-50"
+                 >
+                   {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16}/>}
+                   Confirmer
+                 </button>
+              </div>
+           </div>
+        </div>
       )}
 
       {editTask && (
@@ -249,13 +334,26 @@ const PlanningModule: React.FC<Props> = ({ currentUser, tasks, team, onAddTask, 
                     <td className="p-5"><span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase ${URGENCY_MAP[t.urgency].bg} ${URGENCY_MAP[t.urgency].color}`}>{URGENCY_MAP[t.urgency].label}</span></td>
                     <td className="p-5 font-bold text-slate-700">{formatDateFR(t.deadline)}</td>
                     <td className="p-5 text-right">
-                      {canModify && (
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {t.status === 'todo' && <button onClick={() => handleQuickReport(t)} title="Reporter à +7 jours" className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-600 hover:text-white transition-all shadow-sm"><RotateCcw size={14}/></button>}
-                          <button onClick={() => setEditTask(t)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"><Edit3 size={14}/></button>
-                          <button onClick={() => setTaskToDeleteId(t.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-all"><Trash2 size={14}/></button>
-                        </div>
-                      )}
+                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Bouton Déléguer (uniquement dans "Mes Tâches" pour Manager/Admin) */}
+                        {activeTab === 'mine' && isAdminOrManager && t.status === 'todo' && (
+                          <button 
+                            onClick={() => setDelegatingTask(t)} 
+                            title="Déléguer cette mission" 
+                            className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
+                          >
+                            <UserPlus size={14}/>
+                          </button>
+                        )}
+                        
+                        {canModify && (
+                          <>
+                            {t.status === 'todo' && <button onClick={() => handleQuickReport(t)} title="Reporter à +7 jours" className="p-2 bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-600 hover:text-white transition-all shadow-sm"><RotateCcw size={14}/></button>}
+                            <button onClick={() => setEditTask(t)} className="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"><Edit3 size={14}/></button>
+                            <button onClick={() => setTaskToDeleteId(t.id)} className="p-2 text-slate-300 hover:text-rose-600 transition-all"><Trash2 size={14}/></button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
