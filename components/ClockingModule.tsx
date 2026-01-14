@@ -15,6 +15,14 @@ interface Props {
   poleFilter: string;
 }
 
+// Helper pour obtenir la date au format YYYY-MM-DD en tenant compte du fuseau horaire local
+const toLocalISO = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendance, onCheckIn, onCheckOut, onUpdateAttendance, onExport, poleFilter }) => {
   const [currentTime, setCurrentTime] = useState(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
   const [loading, setLoading] = useState(false);
@@ -28,7 +36,7 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
 
   const [editingAttendance, setEditingAttendance] = useState<Attendance | null>(null);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toLocalISO(new Date());
   const isAdminOrManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER;
 
   const todayRecord = useMemo(() => attendance.find(a => 
@@ -69,42 +77,46 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
     let startDate = new Date();
     let endDate = new Date();
     
-    // FIX: Alignement strict sur les périodes civiles
+    // Verrouillage strict des périodes
     if (timeRange === 'day') {
       startDate = new Date(now);
-      startDate.setHours(0, 0, 0, 0);
       endDate = new Date(now);
-      endDate.setHours(23, 59, 59, 999);
     }
     else if (timeRange === 'week') {
       const day = now.getDay();
+      // On calcule le Lundi de la semaine en cours
       const diffToMonday = (day === 0 ? -6 : 1) - day;
       startDate = new Date(now);
       startDate.setDate(now.getDate() + diffToMonday);
-      startDate.setHours(0, 0, 0, 0);
+      // Le Dimanche est Lundi + 6 jours
       endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 6);
-      endDate.setHours(23, 59, 59, 999);
     }
     else if (timeRange === 'month') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      // 1er du mois au dernier jour du mois
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     }
     else {
-      // Pour l'historique complet, on recule de 3 mois de manière stricte (début de mois)
-      startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1, 0, 0, 0, 0);
+      startDate.setMonth(now.getMonth() - 3);
       endDate = new Date(now);
-      endDate.setHours(23, 59, 59, 999);
     }
 
     const dates: string[] = [];
     let iter = new Date(startDate);
     
-    // S'assurer que iter ne dépasse pas aujourd'hui pour l'affichage si on est dans le futur de la période (ex: fin de semaine pas encore atteinte)
-    const limitDate = endDate > now ? now : endDate;
+    // On ne génère des lignes que jusqu'à aujourd'hui au maximum pour la période sélectionnée
+    // Cela évite d'afficher des "Absents" dans le futur de la semaine/mois
+    const todayObj = new Date();
+    const limitDate = endDate > todayObj ? todayObj : endDate;
     
-    while (iter <= limitDate) {
-      dates.push(iter.toISOString().split('T')[0]);
+    // On normalise à minuit pour la comparaison
+    iter.setHours(0, 0, 0, 0);
+    const limitCompare = new Date(limitDate);
+    limitCompare.setHours(0, 0, 0, 0);
+
+    while (iter <= limitCompare) {
+      dates.push(toLocalISO(iter));
       iter.setDate(iter.getDate() + 1);
     }
     dates.reverse();
