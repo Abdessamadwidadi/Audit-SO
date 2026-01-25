@@ -11,72 +11,52 @@ interface Props {
   attendance: Attendance[];
   collaborators: Collaborator[];
   poleFilter: string;
+  startDate: string;
+  endDate: string;
+  exerciceFilter: number;
 }
 
-const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborators, poleFilter }) => {
+const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborators, poleFilter, startDate, endDate, exerciceFilter }) => {
   const [activeTab, setActiveTab] = useState<'global' | 'budgets' | 'equipe' | 'assiduite' | 'ia'>('global');
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const filteredEntries = useMemo(() => {
-    if (!poleFilter || poleFilter === 'all') return entries;
-    return entries.filter(e => e.service?.toLowerCase() === poleFilter.toLowerCase());
-  }, [entries, poleFilter]);
+    let list = entries;
+    // Appliquer le filtre exercice
+    if (exerciceFilter !== 0) {
+      list = list.filter(e => e.exercice === exerciceFilter);
+    }
+    if (poleFilter !== 'all') {
+      list = list.filter(e => e.service?.toLowerCase().trim() === poleFilter.toLowerCase().trim());
+    }
+    return list.filter(e => e.date >= startDate && e.date <= endDate);
+  }, [entries, poleFilter, startDate, endDate, exerciceFilter]);
 
   const totalHours = filteredEntries.reduce((sum, e) => sum + e.duration, 0);
 
   const budgetData = useMemo(() => {
     return folders
-      .filter(f => !poleFilter || poleFilter === 'all' || f.serviceType?.toLowerCase() === poleFilter.toLowerCase())
+      .filter(f => !poleFilter || poleFilter === 'all' || f.serviceType?.toLowerCase().trim() === poleFilter.toLowerCase().trim())
       .map(f => {
-        const consumed = entries.filter(e => String(e.folderId) === String(f.id)).reduce((sum, e) => sum + e.duration, 0);
+        const consumed = filteredEntries.filter(e => String(e.folderId) === String(f.id)).reduce((sum, e) => sum + e.duration, 0);
         const budget = f.budgetHours || 0;
         const percent = budget > 0 ? Math.round((consumed / budget) * 100) : 0;
         return { ...f, consumed, budget, percent };
       })
       .sort((a, b) => b.consumed - a.consumed);
-  }, [folders, entries, poleFilter]);
-
-  const atRiskFolders = useMemo(() => budgetData.filter(f => f.percent > 90), [budgetData]);
+  }, [folders, filteredEntries, poleFilter]);
 
   const collabData = useMemo(() => {
-    const targetCollaborators = collaborators.filter(c => {
-      if (!poleFilter || poleFilter === 'all') return true;
-      const isManagement = c.role === UserRole.ADMIN || c.role === UserRole.MANAGER;
-      const matchesPole = c.department?.toLowerCase() === poleFilter.toLowerCase();
-      return isManagement || matchesPole;
-    });
-
-    return targetCollaborators
+    return collaborators
+      .filter(c => poleFilter === 'all' || c.department.toLowerCase().trim() === poleFilter.toLowerCase().trim() || c.role !== UserRole.COLLABORATOR)
       .map(c => {
-        const userEntries = entries.filter(e => 
-          String(e.collaboratorId) === String(c.id) &&
-          (!poleFilter || poleFilter === 'all' || e.service?.toLowerCase() === poleFilter.toLowerCase())
-        );
-        const hours = userEntries.reduce((sum, e) => sum + e.duration, 0);
-        const foldersCount = new Set(userEntries.map(e => e.folderId)).size;
-        return { name: c.name, hours, foldersCount, originalCollab: c };
+        const hours = filteredEntries.filter(e => String(e.collaboratorId) === String(c.id)).reduce((sum, e) => sum + e.duration, 0);
+        return { name: c.name, hours, collab: c };
       })
-      .filter(c => {
-        if (!poleFilter || poleFilter === 'all') return c.hours > 0;
-        const matchesNativePole = c.originalCollab.department?.toLowerCase() === poleFilter.toLowerCase();
-        return c.hours > 0 || matchesNativePole;
-      })
+      .filter(c => c.hours > 0)
       .sort((a, b) => b.hours - a.hours);
-  }, [collaborators, entries, poleFilter]);
-
-  const activeFoldersCount = useMemo(() => {
-     return new Set(filteredEntries.map(e => e.folderId)).size;
-  }, [filteredEntries]);
-
-  const attendanceStats = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const activeCollabs = collaborators.filter(c => !poleFilter || poleFilter === 'all' || c.department?.toLowerCase() === poleFilter.toLowerCase());
-    const presentToday = attendance.filter(a => a.date === today && activeCollabs.some(c => String(c.id) === String(a.collaboratorId))).length;
-    const target = activeCollabs.length;
-    const rate = target > 0 ? Math.round((presentToday / target) * 100) : 0;
-    return { rate, present: presentToday, total: target };
-  }, [attendance, collaborators, poleFilter]);
+  }, [collaborators, filteredEntries, poleFilter]);
 
   const handleAIAnalysis = async () => {
     setIsAnalyzing(true);
@@ -85,25 +65,16 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
     setIsAnalyzing(false);
   };
 
-  const handleExportBudgets = () => {
-    const data = [
-      ["DOSSIER", "NUMÉRO", "PÔLE", "BUDGET PRÉVU (H)", "HEURES CONSOMMÉES (H)", "UTILISATION (%)"],
-      ...budgetData.map(f => [f.name, f.number, f.serviceType, f.budget, f.consumed, `${f.percent}%`])
-    ];
-    exportToExcel(`Pilotage_Budgets_MSO_${new Date().toISOString().split('T')[0]}`, data);
-  };
-
   return (
     <div className="space-y-10 animate-in fade-in duration-700 pb-10">
-      <div className="flex bg-white p-2 rounded-2xl border border-slate-100 shadow-sm w-fit overflow-x-auto hide-scrollbar">
+      <div className="flex bg-white p-2 rounded-2xl border border-slate-100 shadow-sm w-fit">
         {[
           {id: 'global', icon: <LayoutGrid size={14}/>, label: 'Aperçu'},
           {id: 'budgets', icon: <Target size={14}/>, label: 'Suivi Dossiers'},
           {id: 'equipe', icon: <TrendingUp size={14}/>, label: 'Productivité'},
-          {id: 'assiduite', icon: <UserCheck size={14}/>, label: 'Assiduité'},
           {id: 'ia', icon: <Sparkles size={14}/>, label: 'Analyse IA'}
         ].map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+          <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
             {tab.icon} {tab.label}
           </button>
         ))}
@@ -111,175 +82,66 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
 
       {activeTab === 'global' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in slide-in-from-bottom-4">
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 group hover:border-indigo-500 transition-all">
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Heures Cumulées</p>
+          <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Production Totale</p>
             <p className="text-4xl font-black text-indigo-600">{totalHours}h</p>
           </div>
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 group hover:border-indigo-500 transition-all">
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Dossiers Impactés</p>
-            <p className="text-4xl font-black text-slate-900">{activeFoldersCount}</p>
+          <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Dossiers Actifs</p>
+            <p className="text-4xl font-black text-slate-900">{new Set(filteredEntries.map(e => e.folderId)).size}</p>
           </div>
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 group hover:border-indigo-500 transition-all">
+          <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Alertes Budget</p>
-            <p className={`text-4xl font-black ${atRiskFolders.length > 0 ? 'text-rose-600' : 'text-emerald-500'}`}>{atRiskFolders.length}</p>
-          </div>
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 group hover:border-indigo-500 transition-all">
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Assiduité</p>
-            <p className={`text-4xl font-black ${attendanceStats.rate < 80 ? 'text-amber-500' : 'text-emerald-500'}`}>{attendanceStats.rate}%</p>
+            <p className="text-4xl font-black text-rose-600">{budgetData.filter(f => f.percent > 90).length}</p>
           </div>
         </div>
       )}
 
       {activeTab === 'budgets' && (
-        <div className="bg-white rounded-[3rem] border border-slate-200 shadow-xl overflow-hidden animate-in slide-in-from-bottom-4">
-          <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
-            <div>
-              <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3"><Target className="text-indigo-600" /> Suivi des budgets temps</h3>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Saisie en temps réel vs Budget prévisionnel</p>
-            </div>
-            <button onClick={handleExportBudgets} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg flex items-center gap-3 hover:bg-slate-900 transition-all">
-              <Download size={16}/> EXPORTER BUDGETS XLS
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            {budgetData.length > 0 ? (
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400 border-b">
-                  <tr>
-                    <th className="p-6">Dossier</th>
-                    <th className="p-6">Numéro</th>
-                    <th className="p-6 text-center">Budget</th>
-                    <th className="p-6 text-center">Consommé</th>
-                    <th className="p-6">Progression</th>
-                    <th className="p-6 text-right">Statut</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {budgetData.map(f => (
-                    <tr key={f.id} className="hover:bg-indigo-50/20 transition-colors">
-                      <td className="p-6 font-bold text-slate-900">{f.name}</td>
-                      <td className={`p-6 font-black ${f.serviceType?.toLowerCase() === 'audit' ? 'text-blue-600/40' : 'text-orange-500/40'} text-xs`}>{f.number}</td>
-                      <td className={`p-6 text-center font-black ${f.serviceType?.toLowerCase() === 'audit' ? 'text-blue-600' : 'text-orange-500'}`}>{f.budget}h</td>
-                      <td className="p-6 text-center font-black text-slate-900">{f.consumed}h</td>
-                      <td className="p-6 min-w-[200px]">
-                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full transition-all duration-1000 ${f.percent > 90 ? 'bg-rose-500' : (f.serviceType?.toLowerCase() === 'audit' ? 'bg-blue-600' : 'bg-orange-500')}`} 
-                            style={{ width: `${Math.min(f.percent, 100)}%` }}
-                          ></div>
-                        </div>
-                        <p className="text-[9px] font-black text-slate-400 mt-1 uppercase tracking-widest">{f.percent}% Utilisé</p>
-                      </td>
-                      <td className="p-6 text-right">
-                         <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${f.percent > 90 ? 'bg-rose-100 text-rose-700' : (f.serviceType?.toLowerCase() === 'audit' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700')}`}>
-                           {f.percent > 90 ? 'Alerte' : 'OK'}
-                         </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div className="p-20 text-center text-slate-300 font-black uppercase tracking-widest italic">Aucun dossier à afficher pour {poleFilter}</div>
-            )}
-          </div>
+        <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xl overflow-hidden">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-100 text-[10px] font-black uppercase text-slate-600 border-b">
+              <tr><th className="p-6">Dossier</th><th className="p-6 text-center">Consommé</th><th className="p-6">Utilisation</th><th className="p-6 text-right">Statut</th></tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {budgetData.map(f => (
+                <tr key={f.id} className="hover:bg-slate-50">
+                  <td className="p-6 font-black text-slate-900">{f.name}</td>
+                  <td className="p-6 text-center font-black text-slate-800">{f.consumed}h / {f.budget}h</td>
+                  <td className="p-6">
+                    <div className="w-40 bg-slate-100 h-2 rounded-full overflow-hidden shadow-inner">
+                      <div className={`h-full transition-all duration-500 ${f.percent > 90 ? 'bg-rose-500' : (f.serviceType?.toLowerCase().trim() === 'audit' ? 'bg-blue-600' : 'bg-orange-500')}`} style={{ width: `${Math.min(f.percent, 100)}%` }}></div>
+                    </div>
+                  </td>
+                  <td className="p-6 text-right font-black uppercase text-[10px] text-slate-900">{f.percent}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {budgetData.length === 0 && (
+            <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucun dossier sur cette période</div>
+          )}
         </div>
       )}
 
       {activeTab === 'equipe' && (
-        <div className="bg-white rounded-[3rem] border border-slate-200 shadow-xl overflow-hidden animate-in slide-in-from-bottom-4 p-10">
-           <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3 mb-8"><TrendingUp className="text-indigo-600" /> Performance de l'équipe</h3>
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {collabData.map(c => {
-                // FIX: Logique de couleur dynamique basée strictement sur le pôle affiché (Audit=Bleu, Expertise=Orange)
-                // Pour l'Admin et Managers, ils adoptent la couleur du pôle filtré.
-                const isAuditView = poleFilter.toLowerCase() === 'audit';
-                const isExpertiseView = poleFilter.toLowerCase() === 'expertise';
-                const isGlobalView = poleFilter === 'all';
-
-                let cardIsAudit = true;
-                if (isExpertiseView) cardIsAudit = false;
-                else if (isGlobalView) cardIsAudit = c.originalCollab?.department?.toLowerCase() === 'audit';
-
-                return (
-                  <div key={c.name} className={`p-8 bg-slate-50 rounded-3xl border-2 transition-all ${cardIsAudit ? 'border-blue-50 hover:border-blue-600' : 'border-orange-50 hover:border-orange-500'}`}>
-                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Collaborateur</p>
-                    <h4 className="text-lg font-black text-slate-900 mb-4">{c.name}</h4>
-                    <div className="flex justify-between items-end">
-                       <div>
-                         <p className={`text-3xl font-black ${cardIsAudit ? 'text-blue-600' : 'text-orange-500'}`}>{c.hours}h</p>
-                         <p className="text-[9px] font-bold text-slate-400 uppercase">Heures produites</p>
-                       </div>
-                       <div className="text-right">
-                         <p className="text-xl font-black text-slate-900">{c.foldersCount}</p>
-                         <p className="text-[9px] font-bold text-slate-400 uppercase">Dossiers</p>
-                       </div>
-                    </div>
-                  </div>
-                );
-              })}
-           </div>
-        </div>
-      )}
-
-      {activeTab === 'assiduite' && (
-        <div className="bg-white rounded-[3rem] border border-slate-200 shadow-xl overflow-hidden animate-in slide-in-from-bottom-4 p-10 flex flex-col items-center">
-           <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3 mb-8 w-full"><UserCheck className="text-indigo-600" /> Suivi de l'assiduité</h3>
-           <div className="flex flex-col items-center justify-center py-10">
-              <div className="relative w-64 h-64 flex items-center justify-center">
-                 <svg viewBox="0 0 256 256" className="w-full h-full transform -rotate-90 overflow-visible">
-                    <circle cx="128" cy="128" r="85" stroke="currentColor" strokeWidth="20" fill="transparent" className="text-slate-100" />
-                    <circle 
-                      cx="128" cy="128" r="85" 
-                      stroke="currentColor" 
-                      strokeWidth="20" 
-                      fill="transparent" 
-                      strokeDasharray={2 * Math.PI * 85} 
-                      strokeDashoffset={2 * Math.PI * 85 * (1 - attendanceStats.rate / 100)} 
-                      className="text-indigo-600 transition-all duration-1000" 
-                      strokeLinecap="round" 
-                    />
-                 </svg>
-                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <p className="text-6xl font-black text-slate-900">{attendanceStats.rate}%</p>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">PRÉSENCE</p>
-                 </div>
-              </div>
-              <p className="mt-12 text-slate-900 font-black text-2xl">{attendanceStats.present} présents sur {attendanceStats.total}</p>
-           </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+           {collabData.map(c => (
+             <div key={c.name} className={`p-8 bg-white rounded-[2rem] border-2 ${c.collab.department?.toLowerCase().trim() === 'audit' ? 'border-blue-100' : 'border-orange-100'} shadow-sm transition-all hover:shadow-md`}>
+                <h4 className="font-black text-slate-900 uppercase tracking-tight">{c.name}</h4>
+                <p className={`text-3xl font-black mt-4 ${c.collab.department?.toLowerCase().trim() === 'audit' ? 'text-blue-600' : 'text-orange-500'}`}>{c.hours}h</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{c.collab.department}</p>
+             </div>
+           ))}
         </div>
       )}
 
       {activeTab === 'ia' && (
-        <div className="bg-white rounded-[3rem] border border-slate-200 shadow-xl overflow-hidden animate-in slide-in-from-bottom-4">
-           <div className="p-10 border-b bg-indigo-600 text-white flex justify-between items-center">
-              <div>
-                <h3 className="text-2xl font-black tracking-tight flex items-center gap-3"><Sparkles /> Analyse Prédictive IA</h3>
-                <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest mt-1">Intelligence Artificielle au service du pilotage</p>
-              </div>
-              <button 
-                onClick={handleAIAnalysis} 
-                disabled={isAnalyzing}
-                className={`px-8 py-4 bg-white text-indigo-600 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-xl flex items-center gap-3 transition-all hover:bg-slate-900 hover:text-white ${isAnalyzing ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {isAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <Activity size={16} />}
-                {isAnalyzing ? 'ANALYSE EN COURS...' : 'GÉNÉRER L\'ANALYSE'}
-              </button>
-           </div>
-           <div className="p-12 min-h-[400px]">
-              {aiAnalysis ? (
-                <div className="bg-slate-50 p-10 rounded-[2.5rem] border border-slate-100 whitespace-pre-wrap text-slate-700 font-bold text-sm leading-relaxed animate-in fade-in duration-700 text-slate-900">
-                  {aiAnalysis}
-                </div>
-              ) : (
-                <div className="h-full flex flex-col items-center justify-center text-center space-y-6 py-20">
-                   <div className="w-20 h-20 bg-indigo-50 rounded-[2rem] flex items-center justify-center text-indigo-600">
-                      <Sparkles size={40} />
-                   </div>
-                   <p className="text-xl font-black text-slate-900 tracking-tight">Prêt pour l'analyse stratégique ?</p>
-                </div>
-              )}
-           </div>
+        <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xl overflow-hidden p-10 text-center">
+          <button onClick={handleAIAnalysis} disabled={isAnalyzing} className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl flex items-center gap-3 mx-auto hover:bg-indigo-700 transition-all">
+            {isAnalyzing ? <Loader2 className="animate-spin"/> : <Sparkles/>} {isAnalyzing ? 'Analyse...' : 'Générer analyse IA'}
+          </button>
+          {aiAnalysis && <div className="mt-8 p-8 bg-slate-50 rounded-2xl text-left font-bold text-slate-800 whitespace-pre-wrap leading-relaxed shadow-inner">{aiAnalysis}</div>}
         </div>
       )}
     </div>

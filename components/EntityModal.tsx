@@ -1,8 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-// Added AlertTriangle to the imports from lucide-react
-import { X, Save, User, Briefcase, Hash, Calendar, Target, Shield, Timer, AlertTriangle } from 'lucide-react';
-import { ServiceType, UserRole, Collaborator, Folder } from '../types';
+import { X, Save, Shield, Timer, AlertTriangle, Calendar, Eye, EyeOff } from 'lucide-react';
+import { ServiceType, UserRole, Collaborator, EXERCICES } from '../types';
 
 interface Props {
   type: 'collab' | 'folder';
@@ -18,6 +17,8 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
       ? { name: '', department: ServiceType.AUDIT, hiringDate: new Date().toISOString().split('T')[0], role: UserRole.COLLABORATOR, password: '', startTime: '09:00', endTime: '18:00' }
       : { name: '', number: '', clientName: '', serviceType: ServiceType.AUDIT, budgetHours: 0 }
   );
+
+  const [showPin, setShowPin] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -62,7 +63,18 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
               {isUserAdmin && (
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Shield size={10} /> Code d'accès (PIN)</label>
-                  <input required className="w-full p-4 bg-slate-50 border border-indigo-200 rounded-2xl font-black text-center text-indigo-600 tracking-[0.5em] text-2xl outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="0000" />
+                  <div className="relative">
+                    <input required 
+                      type={showPin ? "text" : "password"}
+                      className="w-full p-4 bg-slate-50 border border-indigo-200 rounded-2xl font-black text-center text-indigo-600 tracking-[0.5em] text-2xl outline-none focus:ring-4 ring-indigo-500/10 transition-all" 
+                      value={formData.password} 
+                      onChange={e => setFormData({...formData, password: e.target.value})} 
+                      placeholder="0000" 
+                    />
+                    <button type="button" onClick={() => setShowPin(!showPin)} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-300 hover:text-indigo-600">
+                       {showPin ? <EyeOff size={18}/> : <Eye size={18}/>}
+                    </button>
+                  </div>
                   <p className="text-[8px] font-bold text-slate-400 uppercase text-center mt-1">Seul l'administrateur peut réinitialiser ce code</p>
                 </div>
               )}
@@ -105,9 +117,11 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
             </>
           ) : (
             <>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Numéro de Dossier</label>
-                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} placeholder="Ex: 2024-001" />
+              <div className="grid grid-cols-1 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Numéro de Dossier</label>
+                  <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} placeholder="Ex: 2024-001" />
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Nom du Client / Dossier</label>

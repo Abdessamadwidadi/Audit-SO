@@ -12,6 +12,8 @@ export enum UserRole {
 
 export type TaskUrgency = 'normal' | 'urgent' | 'critique';
 
+export const EXERCICES = [2024, 2025, 2026, 2027];
+
 export const PREDEFINED_TASKS = [
   "Révision comptable",
   "Pointage de banque",
@@ -54,6 +56,7 @@ export interface TimeEntry {
   description: string;
   date: string;
   isOvertime?: boolean;
+  exercice: number;
 }
 
 export interface TaskAssignment {
@@ -65,6 +68,7 @@ export interface TaskAssignment {
   deadline: string;
   status: 'todo' | 'done';
   urgency: TaskUrgency;
+  exercice: number;
 }
 
 export interface Attendance {
