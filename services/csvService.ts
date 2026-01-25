@@ -1,6 +1,6 @@
 
 import * as XLSX from 'xlsx';
-import { TimeEntry } from '../types';
+import { TimeEntry, ServiceType } from '../types';
 
 export const readExcel = (file: File): Promise<any[][]> => {
   return new Promise((resolve, reject) => {
@@ -37,15 +37,16 @@ export const exportToExcel = (filename: string, data: any[][]) => {
 
 /**
  * Exporte les données groupées par dossier
- * Structure : N° Dossier | Nom Dossier | Collaborateur | Exercice | Heures
+ * Structure : PÔLE | N° Dossier | Nom Dossier | Collaborateur | Exercice | Heures
  */
 export const exportGroupedByFolder = (filename: string, entries: TimeEntry[]) => {
   const data: any[][] = [
-    ["N° DOSSIER", "NOM DOSSIER", "COLLABORATEUR", "EXERCICE", "HEURES"],
+    ["PÔLE", "N° DOSSIER", "NOM DOSSIER", "COLLABORATEUR", "EXERCICE", "HEURES"],
   ];
 
   // Groupement hiérarchique : Dossier -> [Collaborateur + Exercice]
   const folderMap = new Map<string, { 
+    service: string,
     name: string, 
     number: string,
     details: Map<string, { collab: string, exercice: number, hours: number }> 
@@ -55,6 +56,7 @@ export const exportGroupedByFolder = (filename: string, entries: TimeEntry[]) =>
     const folderKey = entry.folderId || entry.folderName;
     if (!folderMap.has(folderKey)) {
       folderMap.set(folderKey, { 
+        service: entry.service || "",
         name: entry.folderName, 
         number: entry.folderNumber || "",
         details: new Map() 
@@ -74,25 +76,38 @@ export const exportGroupedByFolder = (filename: string, entries: TimeEntry[]) =>
     detail.hours += entry.duration;
   });
 
-  const sortedFolders = Array.from(folderMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  // Tri des dossiers par Pôle (Audit en premier) puis par nom
+  const sortedFolders = Array.from(folderMap.values()).sort((a, b) => {
+    // Audit avant Expertise
+    if (a.service === ServiceType.AUDIT && b.service !== ServiceType.AUDIT) return -1;
+    if (a.service !== ServiceType.AUDIT && b.service === ServiceType.AUDIT) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   sortedFolders.forEach(folder => {
     let folderTotalHours = 0;
     folder.details.forEach(d => { folderTotalHours += d.hours; });
 
-    // Ligne Dossier (Fond coloré géré visuellement par l'application si besoin, ici on gère le contenu)
-    data.push([folder.number, `${folder.name.toUpperCase()} (${folderTotalHours}h)`, "-", "-", folderTotalHours]);
+    // Ligne de résumé du dossier
+    data.push([
+      folder.service.toUpperCase(), 
+      folder.number, 
+      `${folder.name.toUpperCase()} (TOTAL: ${folderTotalHours}h)`, 
+      "-", 
+      "-", 
+      folderTotalHours
+    ]);
 
     // Lignes Collaborateurs
     Array.from(folder.details.values())
       .sort((a, b) => a.collab.localeCompare(b.collab) || a.exercice - b.exercice)
       .forEach(d => {
-        data.push([folder.number, folder.name.toUpperCase(), d.collab, d.exercice, d.hours]);
+        data.push([folder.service.toUpperCase(), folder.number, folder.name.toUpperCase(), d.collab, d.exercice, d.hours]);
       });
   });
 
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{ wch: 15 }, { wch: 50 }, { wch: 30 }, { wch: 12 }, { wch: 12 }];
+  ws['!cols'] = [{ wch: 15 }, { wch: 15 }, { wch: 50 }, { wch: 30 }, { wch: 12 }, { wch: 12 }];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Export Dossiers");

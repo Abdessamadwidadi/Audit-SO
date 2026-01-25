@@ -71,8 +71,8 @@ const PlanningModule: React.FC<Props> = ({
       if (poleFilter !== 'all' && t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
       // 2. Filtre par recherche texte
       if (taskSearch.trim() && !t.title.toLowerCase().includes(taskSearch.toLowerCase())) return false;
-      // 3. Filtre par dates
-      if (t.deadline < startDate || t.deadline > endDate) return false;
+      
+      // Suppression du filtre de date restrictif (startDate/endDate) pour afficher tout le planning
 
       const creatorId = String(t.assignedById || "").trim().toLowerCase();
       const currentId = String(currentUser.id || "").trim().toLowerCase();
@@ -99,7 +99,7 @@ const PlanningModule: React.FC<Props> = ({
       }
       return true;
     }).filter(t => !showOnlyRemaining || t.status === 'todo');
-  }, [tasks, activeTab, poleFilter, taskSearch, currentUser, showOnlyRemaining, startDate, endDate]);
+  }, [tasks, activeTab, poleFilter, taskSearch, currentUser, showOnlyRemaining]);
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();

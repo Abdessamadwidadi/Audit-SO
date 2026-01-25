@@ -94,23 +94,58 @@ const App: React.FC = () => {
       ]);
       
       setCollaborators(cData?.map(c => ({ 
-        id: String(c.id).trim(), name: c.name, department: c.department as ServiceType, hiringDate: c.hiring_date, role: c.role as UserRole, password: String(c.password), startTime: c.start_time || "09:00", endTime: c.end_time || "18:00" 
+        id: String(c.id).trim(), 
+        name: c.name, 
+        department: c.department as ServiceType, 
+        hiringDate: c.hiring_date, 
+        role: c.role as UserRole, 
+        password: String(c.password), 
+        startTime: c.start_time || "09:00", 
+        endTime: c.end_time || "18:00" 
       })) || []);
 
       setFolders(fData?.map(f => ({ 
-        id: String(f.id).trim(), name: f.name, number: f.number, clientName: f.client_name, serviceType: f.service_type as ServiceType, budgetHours: f.budget_hours 
+        id: String(f.id).trim(), 
+        name: f.name, 
+        number: f.number, 
+        clientName: f.client_name, 
+        serviceType: f.service_type as ServiceType, 
+        budgetHours: f.budget_hours 
       })) || []);
 
       setEntries(eData?.map(e => ({ 
-        id: String(e.id).trim(), collaboratorId: String(e.collaborator_id).trim(), collaboratorName: e.collaborator_name, folderId: e.folder_id ? String(e.folder_id).trim() : '', folderName: e.folder_name, folderNumber: e.folder_number, duration: e.duration, date: e.date, description: e.description, is_overtime: e.is_overtime, service: e.service as ServiceType, exercice: e.exercice || 2025 
+        id: String(e.id).trim(), 
+        collaboratorId: String(e.collaborator_id).trim(), 
+        collaboratorName: e.collaborator_name, 
+        folderId: e.folder_id ? String(e.folder_id).trim() : '', 
+        folderName: e.folder_name, 
+        folderNumber: e.folder_number, 
+        duration: e.duration, 
+        date: e.date, 
+        description: e.description, 
+        isOvertime: e.is_overtime, 
+        service: e.service as ServiceType, 
+        exercice: e.exercice || 2025 
       })) || []);
       
       setTasks(tData?.map((t:any) => ({ 
-        id: String(t.id).trim(), title: t.title, assignedToId: String(t.assigned_to_id || "").trim(), assignedById: String(t.assigned_by_id || "").trim(), pole: t.pole || 'Audit', deadline: t.deadline, status: t.status as 'todo' | 'done', urgency: (t.urgency || 'normal') as any, exercice: t.exercice || 2025 
+        id: String(t.id).trim(), 
+        title: t.title, 
+        assignedToId: String(t.assigned_to_id || "").trim(), 
+        assignedById: String(t.assigned_by_id || "").trim(), 
+        pole: t.pole || 'Audit', 
+        deadline: t.deadline, 
+        status: t.status as 'todo' | 'done', 
+        urgency: (t.urgency || 'normal') as any, 
+        exercice: t.exercice || 2025 
       })) || []);
 
       setAttendance(aData?.map(a => ({ 
-        id: String(a.id).trim(), collaboratorId: String(a.collaborator_id).trim(), date: a.date, checkIn: a.check_in || "", checkOut: a.check_out || "" 
+        id: String(a.id).trim(), 
+        collaboratorId: String(a.collaborator_id).trim(), 
+        date: a.date, 
+        checkIn: a.check_in || "", 
+        checkOut: a.check_out || "" 
       })) || []);
 
       setIsDataLoaded(true);
@@ -167,8 +202,8 @@ const App: React.FC = () => {
 
   const handleExportSimple = () => {
     const data = [
-      ["DATE", "COLLABORATEUR", "DOSSIER", "PÔLE", "TRAVAUX", "HEURES"],
-      ...filteredHistory.map(e => [formatDateFR(e.date), e.collaboratorName, e.folderName, e.service, e.description, e.duration])
+      ["DATE", "COLLABORATEUR", "DOSSIER", "PÔLE", "EXERCICE", "TRAVAUX", "HEURES"],
+      ...filteredHistory.map(e => [formatDateFR(e.date), e.collaboratorName, e.folderName, e.service, e.exercice, e.description, e.duration])
     ];
     exportToExcel(`Export_Simple_${new Date().toISOString().split('T')[0]}`, data);
   };
