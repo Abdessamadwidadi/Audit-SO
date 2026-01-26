@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, Shield, Timer, AlertTriangle, Calendar, Eye, EyeOff } from 'lucide-react';
+import { X, Save, Shield, Timer, AlertTriangle, Calendar, Eye, EyeOff, CheckCircle2, Circle } from 'lucide-react';
 import { ServiceType, UserRole, Collaborator, EXERCICES } from '../types';
 
 interface Props {
@@ -14,7 +14,7 @@ interface Props {
 const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, onClose }) => {
   const [formData, setFormData] = useState<any>(
     type === 'collab' 
-      ? { name: '', department: ServiceType.AUDIT, hiringDate: new Date().toISOString().split('T')[0], role: UserRole.COLLABORATOR, password: '', startTime: '09:00', endTime: '18:00' }
+      ? { name: '', department: ServiceType.AUDIT, hiringDate: new Date().toISOString().split('T')[0], role: UserRole.COLLABORATOR, password: '', startTime: '09:00', endTime: '18:00', isActive: true }
       : { name: '', number: '', clientName: '', serviceType: ServiceType.AUDIT, budgetHours: 0 }
   );
 
@@ -55,6 +55,21 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
         <form onSubmit={handleSubmit} className="p-10 space-y-6">
           {type === 'collab' ? (
             <>
+              <div className="flex justify-between items-center bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
+                <div>
+                  <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Statut du compte</p>
+                  <p className="text-[11px] font-bold text-slate-500">Un collaborateur inactif ne peut plus se connecter.</p>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={() => setFormData({...formData, isActive: !formData.isActive})}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl font-black text-[9px] uppercase transition-all ${formData.isActive ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-200 text-slate-500'}`}
+                >
+                  {formData.isActive ? <CheckCircle2 size={14}/> : <Circle size={14}/>}
+                  {formData.isActive ? 'Actif' : 'Inactif'}
+                </button>
+              </div>
+
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Nom Complet</label>
                 <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nom..." />
@@ -75,27 +90,9 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
                        {showPin ? <EyeOff size={18}/> : <Eye size={18}/>}
                     </button>
                   </div>
-                  <p className="text-[8px] font-bold text-slate-400 uppercase text-center mt-1">Seul l'administrateur peut réinitialiser ce code</p>
                 </div>
               )}
               
-              {!isUserAdmin && type === 'collab' && (
-                <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3">
-                  <AlertTriangle className="text-amber-600 shrink-0" size={16} />
-                  <p className="text-[9px] font-bold text-amber-800 uppercase leading-relaxed">
-                    Accès restreint : Seul l'Admin principal peut modifier les accès de sécurité des collaborateurs.
-                  </p>
-                </div>
-              )}
-              
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Timer size={10} /> Planning Horaire</label>
-                <select className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none" value={currentSchedule} onChange={handleScheduleChange}>
-                  <option value="08:00-17:00">08:00 à 17:00</option>
-                  <option value="09:00-18:00">09:00 à 18:00</option>
-                </select>
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Pôle</label>
@@ -109,10 +106,6 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
                     {Object.values(UserRole).map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Date d'embauche</label>
-                <input type="date" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none" value={formData.hiringDate} onChange={e => setFormData({...formData, hiringDate: e.target.value})} />
               </div>
             </>
           ) : (

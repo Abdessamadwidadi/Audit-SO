@@ -14,7 +14,7 @@ import {
   PlusCircle, Loader2, Search, Trash2, Download, Table, Edit3, 
   Shield, Crown, Plus, FileSpreadsheet, Key, Briefcase, Star,
   TrendingUp, Activity, Award, Gem, ShieldCheck, BarChart3, Settings,
-  X, CheckCircle, AlertTriangle, FileText, Calendar
+  X, CheckCircle, AlertTriangle, FileText, Calendar, UserX
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { exportToExcel, exportGroupedByFolder } from './services/csvService';
@@ -83,6 +83,13 @@ const App: React.FC = () => {
     setTimeout(() => setNotif(null), 4000);
   }, []);
 
+  const handleLogout = useCallback(() => {
+    setCurrentUserId(null);
+    localStorage.removeItem(STORE.USER_ID);
+    setLoginStep(null);
+    setPinInput('');
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
       const [{ data: cData }, { data: fData }, { data: eData }, { data: tData }, { data: aData }] = await Promise.all([
@@ -93,7 +100,7 @@ const App: React.FC = () => {
         supabase.from('attendance').select('*').order('date', { ascending: false })
       ]);
       
-      setCollaborators(cData?.map(c => ({ 
+      const collabs: Collaborator[] = cData?.map(c => ({ 
         id: String(c.id).trim(), 
         name: c.name, 
         department: c.department as ServiceType, 
@@ -101,8 +108,20 @@ const App: React.FC = () => {
         role: c.role as UserRole, 
         password: String(c.password), 
         startTime: c.start_time || "09:00", 
-        endTime: c.end_time || "18:00" 
-      })) || []);
+        endTime: c.end_time || "18:00",
+        isActive: c.is_active !== false 
+      })) || [];
+
+      setCollaborators(collabs);
+
+      // SÉCURITÉ : Vérification du statut actif de l'utilisateur connecté
+      if (currentUserId) {
+        const found = collabs.find(c => c.id === currentUserId);
+        if (!found || !found.isActive) {
+          handleLogout();
+          showNotif('error', "Compte désactivé ou introuvable");
+        }
+      }
 
       setFolders(fData?.map(f => ({ 
         id: String(f.id).trim(), 
@@ -150,18 +169,13 @@ const App: React.FC = () => {
       showNotif('error', "Erreur de synchronisation"); 
       setIsDataLoaded(true); 
     }
-  }, [supabase, showNotif]);
+  }, [supabase, showNotif, currentUserId, handleLogout]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const currentUser = useMemo(() => collaborators.find(c => String(c.id).trim() === String(currentUserId).trim()), [collaborators, currentUserId]);
   const isAdminOrManager = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MANAGER;
 
-  /**
-   * RÉSOLUTION DYNAMIQUE DES DONNÉES
-   * On cherche les infos réelles dans l'état actuel pour garantir que si un dossier est renommé,
-   * l'affichage change partout.
-   */
   const resolveFolder = useCallback((folderId: string) => {
     return folders.find(f => String(f.id).trim() === folderId);
   }, [folders]);
@@ -185,8 +199,23 @@ const App: React.FC = () => {
     try {
       const table = entityModal?.type === 'collab' ? 'collaborators' : 'folders';
       const payload = entityModal?.type === 'collab' 
-        ? { name: data.name, department: data.department, hiring_date: data.hiringDate, role: data.role, password: data.password, start_time: data.startTime, end_time: data.endTime }
-        : { name: data.name, number: data.number, client_name: data.clientName || data.name, service_type: data.serviceType, budget_hours: parseFloat(data.budgetHours) || 0 };
+        ? { 
+            name: data.name, 
+            department: data.department, 
+            hiring_date: data.hiringDate, 
+            role: data.role, 
+            password: data.password, 
+            start_time: data.startTime, 
+            end_time: data.endTime,
+            is_active: data.isActive !== false
+          }
+        : { 
+            name: data.name, 
+            number: data.number, 
+            client_name: data.clientName || data.name, 
+            service_type: data.serviceType, 
+            budget_hours: parseFloat(data.budgetHours) || 0 
+          };
 
       if (data.id) await supabase.from(table).update(payload).eq('id', data.id);
       else await supabase.from(table).insert([{ id: generateId(), ...payload }]);
@@ -244,7 +273,7 @@ const App: React.FC = () => {
 
   if (!isDataLoaded) return <div className="min-h-screen bg-[#020617] flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={48} /></div>;
 
-  if (!currentUserId || !currentUser) {
+  if (!currentUserId || !currentUser || !currentUser.isActive) {
     if (loginStep) {
       return (
         <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6 text-white overflow-hidden">
@@ -268,7 +297,7 @@ const App: React.FC = () => {
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-10 text-white">
         <div className="text-center mb-16 flex flex-col items-center"><Logo variant="both" size={60} showText={false} className="mb-6" /><h1 className="text-6xl font-black tracking-tighter mb-2">Management SO</h1><p className="text-indigo-400 font-black text-[10px] uppercase tracking-[0.5em] opacity-60">Cabinet d'Audit & Conseil</p></div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 w-full max-w-7xl px-4">
-          {collaborators.map(c => (
+          {collaborators.filter(c => c.isActive).map(c => (
             <button key={c.id} onClick={() => setLoginStep({collab: c})} className={`group p-10 rounded-[4rem] transition-all text-left flex flex-col justify-between min-h-[240px] relative overflow-hidden border-2 ${c.role === UserRole.ADMIN ? 'bg-[#111827] border-amber-400' : 'bg-[#111827] border-white/5 hover:border-indigo-500'}`}>
               {c.role === UserRole.ADMIN && <Crown className="absolute top-6 right-8 text-amber-400" size={32} />}
               <div><h3 className="text-3xl font-black mb-1 leading-tight group-hover:text-indigo-400 transition-colors">{c.name}</h3><p className={`text-[9px] font-black uppercase tracking-[0.2em] ${c.role === UserRole.ADMIN ? 'text-amber-400' : 'text-slate-500'}`}>{c.role}</p></div>
@@ -285,10 +314,13 @@ const App: React.FC = () => {
       {notif && (<div className={`fixed top-8 right-8 z-[1000] flex items-center gap-4 px-8 py-4 rounded-2xl text-white font-black text-[10px] uppercase shadow-2xl animate-in slide-in-from-right-4 ${notif.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>{notif.msg}</div>)}
       {entityModal && <EntityModal type={entityModal.type} initialData={entityModal.data} currentUser={currentUser} onSave={handleSaveEntity} onClose={() => setEntityModal(null)} />}
       {editEntryModal && <EntryEditModal entry={editEntryModal} folders={folders} currentUser={currentUser} onSave={async (u) => { await supabase.from('time_entries').update({ duration: u.duration, description: u.description, date: u.date, folder_id: u.folderId, service: u.service, exercice: u.exercice }).eq('id', u.id); setEditEntryModal(null); fetchData(); showNotif('success', 'Mis à jour'); }} onClose={() => setEditEntryModal(null)} />}
-      {deleteConfirm && <ConfirmModal title={deleteConfirm.label} message={deleteConfirm.table === 'folders' ? "Ce dossier sera archivé mais ses temps passés resteront consultables." : "Action irréversible."} onConfirm={async () => { 
+      {deleteConfirm && <ConfirmModal title={deleteConfirm.label} message={deleteConfirm.table === 'folders' ? "Ce dossier sera archivé mais ses temps passés resteront consultables." : deleteConfirm.table === 'collaborators' ? "Le compte sera désactivé. Ses saisies de temps resteront visibles dans l'historique." : "Action irréversible."} onConfirm={async () => { 
         if (deleteConfirm.table === 'folders') {
           await supabase.from('folders').update({ is_archived: true }).eq('id', deleteConfirm.id);
           showNotif('success', 'Dossier archivé');
+        } else if (deleteConfirm.table === 'collaborators') {
+          await supabase.from('collaborators').update({ is_active: false }).eq('id', deleteConfirm.id);
+          showNotif('success', 'Collaborateur désactivé');
         } else {
           await supabase.from(deleteConfirm.table).delete().eq('id', deleteConfirm.id);
           showNotif('success', 'Supprimé');
@@ -326,7 +358,7 @@ const App: React.FC = () => {
             ))}
           </div>}
         </nav>
-        <button onClick={() => { setCurrentUserId(null); localStorage.removeItem(STORE.USER_ID); }} className="w-full flex items-center gap-3 text-slate-500 hover:text-rose-400 font-black uppercase text-[9px] tracking-widest p-4 transition-colors"><LogOut size={16}/> Déconnexion</button>
+        <button onClick={handleLogout} className="w-full flex items-center gap-3 text-slate-500 hover:text-rose-400 font-black uppercase text-[9px] tracking-widest p-4 transition-colors"><LogOut size={16}/> Déconnexion</button>
       </aside>
 
       <main className="flex-grow p-16 overflow-y-auto bg-[#fdfdfe] text-slate-900">
@@ -360,7 +392,6 @@ const App: React.FC = () => {
 
         <div className="space-y-12">
           {view === 'log' && <TimeEntryForm currentUser={currentUser} folders={folders} existingEntries={entries} onAddEntry={async d => { 
-            // INSERTION PURE SUR ID
             await supabase.from('time_entries').insert([{ 
               id: generateId(), 
               collaborator_id: currentUserId, 
@@ -397,12 +428,11 @@ const App: React.FC = () => {
                           <td className="p-6 font-bold text-black">{formatDateFR(e.date)}</td>
                           <td className={`p-6 font-black uppercase ${isAudit ? 'text-[#0056b3]' : 'text-orange-600'}`}>
                             {collab ? collab.name : "Inconnu"}
+                            {collab && !collab.isActive && <span className="text-[7px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-full ml-2">Désactivé</span>}
                           </td>
                           <td className="p-6 font-black text-black">
-                             {/* AFFICHAGE DU NUMÉRO + NOM */}
                              <span className="text-indigo-600 mr-2">[{folder ? folder.number : 'N/A'}]</span>
                              {folder ? folder.name : "Inconnu"} 
-                             {folder?.isArchived && <span className="text-[8px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full ml-2">Archivé</span>}
                           </td>
                           <td className="p-6 text-center font-black text-black text-lg">{e.duration}h</td>
                           <td className="p-6 text-right">
@@ -418,7 +448,7 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {view === 'planning' && <PlanningModule currentUser={currentUser} tasks={tasks} team={collaborators} showNotif={showNotif} onAddTask={async t => { await supabase.from('tasks').insert([{ id: generateId(), title: t.title, assigned_to_id: String(t.assignedToId).trim(), assigned_by_id: String(currentUserId).trim(), pole: t.pole, deadline: t.deadline, urgency: t.urgency, status: 'todo' }]); await fetchData(); }} onUpdateTask={async (id, upd) => { const p:any = {}; if (upd.title !== undefined) p.title = upd.title; if (upd.assignedToId !== undefined) p.assigned_to_id = String(upd.assignedToId).trim(); if (upd.deadline !== undefined) p.deadline = upd.deadline; if (upd.pole !== undefined) p.pole = upd.pole; if (upd.urgency !== undefined) p.urgency = upd.urgency; if (upd.status !== undefined) p.status = upd.status; await supabase.from('tasks').update(p).eq('id', id); await fetchData(); }} onDeleteTask={async id => { await supabase.from('tasks').delete().eq('id', id); await fetchData(); }} poleFilter={poleFilter} startDate={startDate} endDate={endDate} />}
+          {view === 'planning' && <PlanningModule currentUser={currentUser} tasks={tasks} team={collaborators.filter(c => c.isActive)} showNotif={showNotif} onAddTask={async t => { await supabase.from('tasks').insert([{ id: generateId(), title: t.title, assigned_to_id: String(t.assignedToId).trim(), assigned_by_id: String(currentUserId).trim(), pole: t.pole, deadline: t.deadline, urgency: t.urgency, status: 'todo' }]); await fetchData(); }} onUpdateTask={async (id, upd) => { const p:any = {}; if (upd.title !== undefined) p.title = upd.title; if (upd.assignedToId !== undefined) p.assigned_to_id = String(upd.assignedToId).trim(); if (upd.deadline !== undefined) p.deadline = upd.deadline; if (upd.pole !== undefined) p.pole = upd.pole; if (upd.urgency !== undefined) p.urgency = upd.urgency; if (upd.status !== undefined) p.status = upd.status; await supabase.from('tasks').update(p).eq('id', id); await fetchData(); }} onDeleteTask={async id => { await supabase.from('tasks').delete().eq('id', id); await fetchData(); }} poleFilter={poleFilter} startDate={startDate} endDate={endDate} />}
           {view === 'dashboard' && <Dashboard entries={entries} folders={folders} attendance={attendance} collaborators={collaborators} poleFilter={poleFilter} startDate={startDate} endDate={endDate} exerciceFilter={exerciceFilter} />}
           {view === 'folders' && (
             <div className="space-y-6">
@@ -454,12 +484,31 @@ const App: React.FC = () => {
               </div>
               <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl overflow-hidden text-black">
                 <table className="w-full text-left">
-                  <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b"><tr><th className="p-6">Collaborateur</th><th className="p-6">Pôle</th><th className="p-6">Rôle</th><th className="p-6">Embauche</th><th className="p-6 text-right">Actions</th></tr></thead>
+                  <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b"><tr><th className="p-6">Collaborateur</th><th className="p-6">Pôle</th><th className="p-6">Rôle</th><th className="p-6">Statut</th><th className="p-6 text-right">Actions</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {collaborators
                       .filter(c => poleFilter === 'all' || c.department?.toLowerCase() === poleFilter.toLowerCase())
                       .filter(c => !collabSearchQuery.trim() || c.name.toLowerCase().includes(collabSearchQuery.toLowerCase()))
-                      .map(c => (<tr key={c.id} className="hover:bg-slate-50"><td className="p-6 font-black uppercase text-black">{c.name}</td><td className="p-6"><span className={`px-3 py-1 rounded-full text-[8px] font-black text-white ${c.department?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{c.department}</span></td><td className="p-6 font-bold text-slate-600 uppercase text-[9px]">{c.role}</td><td className="p-6 font-bold text-black">{formatDateFR(c.hiringDate)}</td><td className="p-6 text-right"><button onClick={() => setEntityModal({type: 'collab', data: c})} className="p-2 text-slate-400 hover:text-indigo-600"><Edit3 size={16}/></button><button onClick={() => setDeleteConfirm({id: c.id, table: 'collaborators', label: 'Supprimer'})} className="p-2 text-slate-400 hover:text-rose-600 ml-2"><Trash2 size={16}/></button></td></tr>))}
+                      .map(c => (
+                        <tr key={c.id} className={`hover:bg-slate-50 ${!c.isActive ? 'bg-slate-50 opacity-60' : ''}`}>
+                          <td className="p-6 font-black uppercase text-black">{c.name}</td>
+                          <td className="p-6"><span className={`px-3 py-1 rounded-full text-[8px] font-black text-white ${c.department?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{c.department}</span></td>
+                          <td className="p-6 font-bold text-slate-600 uppercase text-[9px]">{c.role}</td>
+                          <td className="p-6">
+                            <span className={`px-2 py-1 rounded text-[8px] font-black uppercase ${c.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                              {c.isActive ? 'Actif' : 'Désactivé'}
+                            </span>
+                          </td>
+                          <td className="p-6 text-right">
+                            <button onClick={() => setEntityModal({type: 'collab', data: c})} className="p-2 text-slate-400 hover:text-indigo-600"><Edit3 size={16}/></button>
+                            {c.isActive ? (
+                              <button onClick={() => setDeleteConfirm({id: c.id, table: 'collaborators', label: 'Désactiver'})} className="p-2 text-slate-400 hover:text-rose-600 ml-2"><UserX size={16}/></button>
+                            ) : (
+                              <button onClick={() => handleSaveEntity({...c, isActive: true})} className="p-2 text-emerald-400 hover:text-emerald-600 ml-2"><CheckCircle size={16}/></button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>

@@ -33,6 +33,7 @@ export interface Collaborator {
   password?: string;
   startTime: string; // Format "HH:mm"
   endTime: string;   // Format "HH:mm"
+  isActive: boolean; // Nouveau: pour la gestion de l'archivage
 }
 
 export interface Folder {

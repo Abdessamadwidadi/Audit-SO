@@ -56,14 +56,22 @@ const PlanningModule: React.FC<Props> = ({
 
   const isAdminOrManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER;
 
+  /**
+   * Vérifie si un ID cible ou un pôle est contenu dans le champ assignedToId (format CSV)
+   */
   const isIdInCsv = (csv: string, targetId: string, userDept?: string) => {
-    const ids = (csv || "").split(',').map(id => id.trim().toLowerCase()).filter(Boolean);
+    if (!csv) return false;
+    const ids = csv.split(',').map(id => id.trim().toLowerCase()).filter(Boolean);
     const target = targetId.trim().toLowerCase();
     const dept = (userDept || "").toLowerCase();
     
+    // Correspondance ID direct
     if (ids.includes(target)) return true;
+    
+    // Correspondance Pôle (si l'utilisateur fait partie du pôle assigné)
     if (ids.includes('pole_audit') && dept === 'audit') return true;
     if (ids.includes('pole_expertise') && dept === 'expertise') return true;
+    
     return false;
   };
 
@@ -74,24 +82,28 @@ const PlanningModule: React.FC<Props> = ({
       const csv = t.assignedToId || "";
       const isActuallyAssignedToMe = isIdInCsv(csv, currentId, currentUser.department);
       
-      // 1. Filtre par pôle (Ignoré si la tâche m'est assignée personnellement ou à mon pôle)
+      // Filtre global par pôle : 
+      // On l'ignore si la tâche m'est personnellement adressée (priorité à l'assignation)
       if (poleFilter !== 'all' && !isActuallyAssignedToMe) {
         if (t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
       }
 
-      // 2. Filtre par recherche texte
+      // Filtre recherche texte
       if (taskSearch.trim() && !t.title.toLowerCase().includes(taskSearch.toLowerCase())) return false;
       
       const creatorId = String(t.assignedById || "").trim().toLowerCase();
       const isMeCreator = creatorId === currentId;
 
       if (activeTab === 'mine') {
+        // "Individuel" : tâches que j'ai créées ET qui me sont assignées
         return isMeCreator && isActuallyAssignedToMe;
       } 
       if (activeTab === 'received') {
+        // "Reçus" : tâches que je n'ai pas créées MAIS qui me sont assignées (ou à mon pôle)
         return !isMeCreator && isActuallyAssignedToMe;
       }
       if (activeTab === 'delegated') {
+        // "Déléguées" : tâches que j'ai créées MAIS qui ne me sont PAS assignées (seulement aux autres)
         return isMeCreator && !isActuallyAssignedToMe;
       }
       return true;
@@ -111,8 +123,6 @@ const PlanningModule: React.FC<Props> = ({
 
     setLoading(true);
     try {
-      // On définit le pôle de la tâche : si on vise un pôle précis, on prend celui-là, 
-      // sinon on prend le pôle du créateur ou le filtre actif.
       let taskPole = poleFilter !== 'all' ? poleFilter : currentUser.department;
       if (assignedToIds.includes('pole_audit')) taskPole = 'Audit';
       else if (assignedToIds.includes('pole_expertise')) taskPole = 'Expertise';
