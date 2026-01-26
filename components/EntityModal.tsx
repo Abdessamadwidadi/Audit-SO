@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, Shield, Timer, AlertTriangle, Calendar, Eye, EyeOff, CheckCircle2, Circle } from 'lucide-react';
+import { X, Save, Shield, Timer, AlertTriangle, Calendar, Eye, EyeOff, CheckCircle2, Circle, Briefcase, User } from 'lucide-react';
 import { ServiceType, UserRole, Collaborator, EXERCICES } from '../types';
 
 interface Props {
@@ -55,11 +55,19 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[250] p-4">
       <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3)] animate-in zoom-in duration-200">
         <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-[2.5rem]">
-          <h3 className="text-2xl font-black text-slate-900 tracking-tight">
-            {initialData ? 'Modifier' : 'Ajouter'} {type === 'collab' ? 'Collaborateur' : 'Dossier'}
-          </h3>
-          <button onClick={onClose} className="p-3 bg-white text-slate-400 hover:text-red-500 rounded-xl shadow-sm transition-all">
-            <X size={24} />
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-white rounded-xl shadow-sm text-indigo-600">
+              {type === 'collab' ? <User size={24}/> : <Briefcase size={24}/>}
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-slate-900 tracking-tight leading-none">
+                {initialData ? 'Modifier' : 'Ajouter'} {type === 'collab' ? 'Collaborateur' : 'Dossier'}
+              </h3>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Gestion des entités</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-3 bg-white text-slate-400 hover:text-rose-500 rounded-xl shadow-sm transition-all border border-slate-100">
+            <X size={20} />
           </button>
         </div>
 
@@ -83,7 +91,7 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Nom Complet</label>
-                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nom..." />
+                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nom complet..." />
               </div>
               
               <div className="space-y-2">
@@ -132,10 +140,17 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
                   <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={formData.number} onChange={e => setFormData({...formData, number: e.target.value})} placeholder="Ex: 2024-001" />
                 </div>
               </div>
+
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Nom du Client / Dossier</label>
-                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: Société Holding" />
+                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Nom du Client</label>
+                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={formData.clientName} onChange={e => setFormData({...formData, clientName: e.target.value})} placeholder="Ex: Groupe Holding" />
               </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Libellé du Dossier</label>
+                <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Ex: Audit Légal 2025" />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Service / Pôle</label>
@@ -144,7 +159,7 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Budget (h)</label>
+                  <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1">Budget Heures (h)</label>
                   <input type="number" className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-indigo-600 text-xl text-center" value={formData.budgetHours} onChange={e => setFormData({...formData, budgetHours: parseFloat(e.target.value)})} />
                 </div>
               </div>
@@ -152,8 +167,10 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
           )}
 
           <div className="pt-6 flex gap-4">
-            <button type="button" onClick={onClose} className="flex-1 p-5 bg-slate-100 text-slate-900 font-black rounded-3xl uppercase tracking-widest text-[11px] hover:bg-slate-200 transition-all">Annuler</button>
-            <button type="submit" className="flex-1 p-5 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-600/30 hover:bg-slate-900 transition-all flex items-center justify-center gap-2"><Save size={16}/> Sauvegarder</button>
+            <button type="button" onClick={onClose} className="flex-1 p-5 bg-slate-100 text-slate-900 font-black rounded-3xl uppercase tracking-widest text-[11px] hover:bg-slate-200 transition-all border border-slate-200">Annuler</button>
+            <button type="submit" className="flex-1 p-5 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest text-[11px] shadow-xl shadow-indigo-600/30 hover:bg-slate-900 transition-all flex items-center justify-center gap-2">
+              <Save size={16}/> Sauvegarder
+            </button>
           </div>
         </form>
       </div>

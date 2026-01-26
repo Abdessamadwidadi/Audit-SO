@@ -92,13 +92,14 @@ const PlanningModule: React.FC<Props> = ({
       if (poleFilter !== 'all' && t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
       if (taskSearch.trim() && !t.title.toLowerCase().includes(taskSearch.toLowerCase())) return false;
 
-      // Logique des onglets avec protection de la vie privée
+      // Logique des onglets avec protection stricte de la vie privée
       if (activeTab === 'all') {
-        if (isAdminOrManager) {
-          // Un Admin/Manager voit tout SAUF les To-Do strictement privées des autres
+        // Seul l'Admin peut superviser l'ensemble du cabinet
+        if (currentUser.role === UserRole.ADMIN) {
           if (isStrictlyPrivateForCreator && !isMeCreator) return false;
           return true;
         }
+        // Pour les autres (Managers et Collabs), on ne voit QUE ce qui nous concerne directement
         return isAssignedToMe || isMeCreator;
       }
       
@@ -245,7 +246,7 @@ const PlanningModule: React.FC<Props> = ({
       <div className="flex flex-wrap justify-between items-center gap-4">
         <div className="flex items-center gap-4 flex-1">
           <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
-            {isAdminOrManager && <button onClick={() => setActiveTab('all')} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${activeTab === 'all' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>Toutes</button>}
+            <button onClick={() => setActiveTab('all')} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${activeTab === 'all' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>Toutes</button>
             {[ {id: 'mine', l: 'Individuel'}, {id: 'received', l: 'Reçus'}, {id: 'delegated', l: 'Déléguées'} ].map(t => (
               <button key={t.id} onClick={() => setActiveTab(t.id as any)} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${activeTab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400'}`}>
                 {t.l}
