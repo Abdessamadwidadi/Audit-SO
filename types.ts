@@ -42,16 +42,14 @@ export interface Folder {
   clientName: string;
   serviceType: ServiceType;
   budgetHours?: number;
+  isArchived?: boolean;
 }
 
 export interface TimeEntry {
   id: string;
   collaboratorId: string;
-  collaboratorName: string;
   service: ServiceType;
   folderId: string;
-  folderName: string;
-  folderNumber: string;
   duration: number;
   description: string;
   date: string;

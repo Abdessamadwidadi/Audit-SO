@@ -110,20 +110,17 @@ const App: React.FC = () => {
         number: f.number, 
         clientName: f.client_name, 
         serviceType: f.service_type as ServiceType, 
-        budgetHours: f.budget_hours 
+        budgetHours: f.budget_hours,
+        isArchived: f.is_archived || false
       })) || []);
 
       setEntries(eData?.map(e => ({ 
         id: String(e.id).trim(), 
         collaboratorId: String(e.collaborator_id).trim(), 
-        collaboratorName: e.collaborator_name, 
         folderId: e.folder_id ? String(e.folder_id).trim() : '', 
-        folderName: e.folder_name, 
-        folderNumber: e.folder_number, 
         duration: e.duration, 
         date: e.date, 
         description: e.description, 
-        isOvertime: e.is_overtime, 
         service: e.service as ServiceType, 
         exercice: e.exercice || 2025 
       })) || []);
@@ -160,6 +157,19 @@ const App: React.FC = () => {
   const currentUser = useMemo(() => collaborators.find(c => String(c.id).trim() === String(currentUserId).trim()), [collaborators, currentUserId]);
   const isAdminOrManager = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MANAGER;
 
+  /**
+   * RÉSOLUTION DYNAMIQUE DES DONNÉES
+   * On cherche les infos réelles dans l'état actuel pour garantir que si un dossier est renommé,
+   * l'affichage change partout.
+   */
+  const resolveFolder = useCallback((folderId: string) => {
+    return folders.find(f => String(f.id).trim() === folderId);
+  }, [folders]);
+
+  const resolveCollab = useCallback((collabId: string) => {
+    return collaborators.find(c => String(c.id).trim() === String(collabId).trim());
+  }, [collaborators]);
+
   const handleUpdatePin = async () => {
     if ((newPin.length < 4 || newPin.length > 6) || newPin !== confirmPin) return;
     try {
@@ -195,21 +205,41 @@ const App: React.FC = () => {
     list = list.filter(e => e.date >= startDate && e.date <= endDate);
     if (searchQuery.trim()) {
       const s = searchQuery.toLowerCase();
-      list = list.filter(e => (e.collaboratorName?.toLowerCase() || "").includes(s) || (e.folderName?.toLowerCase() || "").includes(s) || (e.description?.toLowerCase() || "").includes(s));
+      list = list.filter(e => {
+        const collab = resolveCollab(e.collaboratorId);
+        const folder = resolveFolder(e.folderId);
+        const cName = collab ? collab.name : "Inconnu";
+        const fName = folder ? folder.name : "Inconnu";
+        const fNum = folder ? folder.number : "N/A";
+        return cName.toLowerCase().includes(s) || fName.toLowerCase().includes(s) || fNum.toLowerCase().includes(s) || e.description.toLowerCase().includes(s);
+      });
     }
     return list;
-  }, [entries, searchQuery, poleFilter, currentUserId, isAdminOrManager, startDate, endDate, exerciceFilter]);
+  }, [entries, searchQuery, poleFilter, currentUserId, isAdminOrManager, startDate, endDate, exerciceFilter, resolveCollab, resolveFolder]);
 
   const handleExportSimple = () => {
     const data = [
-      ["DATE", "COLLABORATEUR", "DOSSIER", "PÔLE", "EXERCICE", "TRAVAUX", "HEURES"],
-      ...filteredHistory.map(e => [formatDateFR(e.date), e.collaboratorName, e.folderName, e.service, e.exercice, e.description, e.duration])
+      ["DATE", "COLLABORATEUR", "N° DOSSIER", "NOM DOSSIER", "PÔLE", "EXERCICE", "TRAVAUX", "HEURES"],
+      ...filteredHistory.map(e => {
+        const collab = resolveCollab(e.collaboratorId);
+        const folder = resolveFolder(e.folderId);
+        return [
+          formatDateFR(e.date), 
+          collab ? collab.name : "Inconnu", 
+          folder ? folder.number : "N/A",
+          folder ? folder.name : "Inconnu", 
+          e.service, 
+          e.exercice, 
+          e.description, 
+          e.duration
+        ];
+      })
     ];
     exportToExcel(`Export_Simple_${new Date().toISOString().split('T')[0]}`, data);
   };
 
   const handleExportGrouped = () => {
-    exportGroupedByFolder(`Export_Groupé_${new Date().toISOString().split('T')[0]}`, filteredHistory);
+    exportGroupedByFolder(`Export_Groupé_${new Date().toISOString().split('T')[0]}`, filteredHistory, folders, collaborators);
   };
 
   if (!isDataLoaded) return <div className="min-h-screen bg-[#020617] flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500" size={48} /></div>;
@@ -218,7 +248,7 @@ const App: React.FC = () => {
     if (loginStep) {
       return (
         <div className="min-h-screen bg-[#020617] flex items-center justify-center p-6 text-white overflow-hidden">
-          <div className="bg-white rounded-[4rem] w-full max-w-[440px] p-12 text-center shadow-2xl animate-in zoom-in">
+          <div className="bg-white rounded-[4rem] w-full max-w-[440px] p-12 text-center shadow-2xl animate-in zoom-in text-black">
             <div className="w-16 h-16 bg-white border-2 border-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-10 shadow-sm"><Shield size={34} className="text-indigo-600" /></div>
             <h3 className="text-[44px] font-black text-[#1e1b4b] mb-1 tracking-tight leading-tight">Code PIN</h3>
             <p className="text-[12px] font-black text-slate-400 uppercase tracking-[0.3em] mb-16">{loginStep.collab.name}</p>
@@ -254,11 +284,21 @@ const App: React.FC = () => {
     <div className="min-h-screen flex bg-[#f8fafc]">
       {notif && (<div className={`fixed top-8 right-8 z-[1000] flex items-center gap-4 px-8 py-4 rounded-2xl text-white font-black text-[10px] uppercase shadow-2xl animate-in slide-in-from-right-4 ${notif.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>{notif.msg}</div>)}
       {entityModal && <EntityModal type={entityModal.type} initialData={entityModal.data} currentUser={currentUser} onSave={handleSaveEntity} onClose={() => setEntityModal(null)} />}
-      {editEntryModal && <EntryEditModal entry={editEntryModal} folders={folders} currentUser={currentUser} onSave={async (u) => { await supabase.from('time_entries').update({ duration: u.duration, description: u.description, date: u.date, folder_id: u.folderId, folder_name: u.folderName, folder_number: u.folderNumber, service: u.service, exercice: u.exercice }).eq('id', u.id); setEditEntryModal(null); fetchData(); showNotif('success', 'Mis à jour'); }} onClose={() => setEditEntryModal(null)} />}
-      {deleteConfirm && <ConfirmModal title={deleteConfirm.label} message="Action irréversible." onConfirm={async () => { await supabase.from(deleteConfirm.table).delete().eq('id', deleteConfirm.id); setDeleteConfirm(null); fetchData(); showNotif('success', 'Supprimé'); }} onCancel={() => setDeleteConfirm(null)} />}
+      {editEntryModal && <EntryEditModal entry={editEntryModal} folders={folders} currentUser={currentUser} onSave={async (u) => { await supabase.from('time_entries').update({ duration: u.duration, description: u.description, date: u.date, folder_id: u.folderId, service: u.service, exercice: u.exercice }).eq('id', u.id); setEditEntryModal(null); fetchData(); showNotif('success', 'Mis à jour'); }} onClose={() => setEditEntryModal(null)} />}
+      {deleteConfirm && <ConfirmModal title={deleteConfirm.label} message={deleteConfirm.table === 'folders' ? "Ce dossier sera archivé mais ses temps passés resteront consultables." : "Action irréversible."} onConfirm={async () => { 
+        if (deleteConfirm.table === 'folders') {
+          await supabase.from('folders').update({ is_archived: true }).eq('id', deleteConfirm.id);
+          showNotif('success', 'Dossier archivé');
+        } else {
+          await supabase.from(deleteConfirm.table).delete().eq('id', deleteConfirm.id);
+          showNotif('success', 'Supprimé');
+        }
+        setDeleteConfirm(null); 
+        fetchData(); 
+      }} onCancel={() => setDeleteConfirm(null)} />}
 
       {showProfileModal && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[500] p-4">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[500] p-4 text-black">
           <div className="bg-white rounded-[3rem] w-full max-w-sm p-10 shadow-2xl animate-in zoom-in">
              <div className="flex justify-between items-center mb-8"><h3 className="text-xl font-black uppercase text-slate-900">Mon Profil</h3><button onClick={() => setShowProfileModal(false)} className="p-2 text-slate-400 hover:text-rose-500"><X size={24}/></button></div>
              <div className="space-y-6">
@@ -266,7 +306,6 @@ const App: React.FC = () => {
                <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirmer le PIN</label>
                   <input type="password" maxLength={6} className={`w-full p-4 bg-slate-50 border-2 ${confirmPin && confirmPin !== newPin ? 'border-rose-500' : 'border-slate-100'} rounded-2xl font-black text-center text-indigo-600 text-3xl tracking-[0.5em] outline-none`} value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g,''))} />
-                  {confirmPin && confirmPin !== newPin && <p className="text-[9px] font-bold text-rose-500 uppercase mt-1 text-center">Codes différents</p>}
                </div>
                <button onClick={handleUpdatePin} disabled={(newPin.length < 4 || newPin.length > 6) || newPin !== confirmPin} className="w-full p-5 bg-indigo-600 text-white rounded-2xl font-black text-[11px] uppercase shadow-xl disabled:bg-slate-100 disabled:text-slate-300">Valider</button>
              </div>
@@ -320,12 +359,26 @@ const App: React.FC = () => {
         </header>
 
         <div className="space-y-12">
-          {view === 'log' && <TimeEntryForm currentUser={currentUser} folders={folders} existingEntries={entries} onAddEntry={async d => { const f = folders.find(fl => fl.id === d.folderId); await supabase.from('time_entries').insert([{ id: generateId(), collaborator_id: currentUserId, collaborator_name: currentUser.name, folder_id: f?.id, folder_name: f?.name, folder_number: f?.number, duration: d.duration, date: d.date, description: d.description, service: f?.serviceType, exercice: d.exercice }]); fetchData(); showNotif('success', 'Enregistré'); }} onQuickFolderAdd={() => setView('folders')} />}
+          {view === 'log' && <TimeEntryForm currentUser={currentUser} folders={folders} existingEntries={entries} onAddEntry={async d => { 
+            // INSERTION PURE SUR ID
+            await supabase.from('time_entries').insert([{ 
+              id: generateId(), 
+              collaborator_id: currentUserId, 
+              folder_id: d.folderId, 
+              duration: d.duration, 
+              date: d.date, 
+              description: d.description, 
+              service: folders.find(fl => fl.id === d.folderId)?.serviceType, 
+              exercice: d.exercice 
+            }]); 
+            fetchData(); 
+            showNotif('success', 'Enregistré'); 
+          }} onQuickFolderAdd={() => setView('folders')} />}
           
           {view === 'history' && (
             <div className="space-y-8 animate-in fade-in">
               <div className="flex justify-between items-center bg-white p-6 rounded-[2rem] border-2 border-slate-100 shadow-sm">
-                 <div className="relative flex-1 max-w-md"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><input type="text" placeholder="Filtrer..." className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-900 text-xs outline-none" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div>
+                 <div className="relative flex-1 max-md:hidden max-w-md"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><input type="text" placeholder="Filtrer..." className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-slate-900 text-xs outline-none" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} /></div>
                  <div className="flex gap-3">
                    <button onClick={handleExportSimple} className="px-6 py-3 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center gap-2"><Download size={14}/> Export Simple</button>
                    <button onClick={handleExportGrouped} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest flex items-center gap-2"><FileText size={14}/> Export Groupé</button>
@@ -335,7 +388,30 @@ const App: React.FC = () => {
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b"><tr><th className="p-6">Date</th><th className="p-6">Collaborateur</th><th className="p-6">Dossier</th><th className="p-6 text-center">Heures</th><th className="p-6 text-right">Actions</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredHistory.map(e => (<tr key={e.id} className="text-xs hover:bg-indigo-50/20"><td className="p-6 font-bold text-black">{formatDateFR(e.date)}</td><td className={`p-6 font-black uppercase ${e.service?.toLowerCase() === 'audit' ? 'text-[#0056b3]' : 'text-orange-600'}`}>{e.collaboratorName}</td><td className="p-6 font-black text-black">{e.folderName}</td><td className="p-6 text-center font-black text-black text-lg">{e.duration}h</td><td className="p-6 text-right"><button onClick={() => setEditEntryModal(e)} className="p-2 text-slate-400 hover:text-indigo-600"><Edit3 size={16}/></button><button onClick={() => setDeleteConfirm({id: e.id, table: 'time_entries', label: 'Supprimer'})} className="p-2 text-slate-400 hover:text-rose-600 ml-2"><Trash2 size={16}/></button></td></tr>))}
+                    {filteredHistory.map(e => {
+                      const collab = resolveCollab(e.collaboratorId);
+                      const folder = resolveFolder(e.folderId);
+                      const isAudit = (e.service || '').toLowerCase() === 'audit';
+                      return (
+                        <tr key={e.id} className="text-xs hover:bg-indigo-50/20">
+                          <td className="p-6 font-bold text-black">{formatDateFR(e.date)}</td>
+                          <td className={`p-6 font-black uppercase ${isAudit ? 'text-[#0056b3]' : 'text-orange-600'}`}>
+                            {collab ? collab.name : "Inconnu"}
+                          </td>
+                          <td className="p-6 font-black text-black">
+                             {/* AFFICHAGE DU NUMÉRO + NOM */}
+                             <span className="text-indigo-600 mr-2">[{folder ? folder.number : 'N/A'}]</span>
+                             {folder ? folder.name : "Inconnu"} 
+                             {folder?.isArchived && <span className="text-[8px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full ml-2">Archivé</span>}
+                          </td>
+                          <td className="p-6 text-center font-black text-black text-lg">{e.duration}h</td>
+                          <td className="p-6 text-right">
+                            <button onClick={() => setEditEntryModal(e)} className="p-2 text-slate-400 hover:text-indigo-600"><Edit3 size={16}/></button>
+                            <button onClick={() => setDeleteConfirm({id: e.id, table: 'time_entries', label: 'Supprimer'})} className="p-2 text-slate-400 hover:text-rose-600 ml-2"><Trash2 size={16}/></button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -358,9 +434,10 @@ const App: React.FC = () => {
                   <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-500 border-b"><tr><th className="p-6">Numéro</th><th className="p-6">Client / Dossier</th><th className="p-6">Pôle</th><th className="p-6 text-center">Budget</th><th className="p-6 text-right">Actions</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {folders
+                      .filter(f => !f.isArchived)
                       .filter(f => poleFilter === 'all' || f.serviceType?.toLowerCase() === poleFilter.toLowerCase())
                       .filter(f => !folderSearchQuery.trim() || f.name.toLowerCase().includes(folderSearchQuery.toLowerCase()) || f.number.toLowerCase().includes(folderSearchQuery.toLowerCase()))
-                      .map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-6 font-bold text-black">{f.number}</td><td className="p-6 font-black uppercase text-black">{f.name}</td><td className="p-6"><span className={`px-3 py-1 rounded-full text-[8px] font-black text-white ${f.serviceType?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{f.serviceType}</span></td><td className="p-6 text-center font-black text-black">{f.budgetHours}h</td><td className="p-6 text-right"><button onClick={() => setEntityModal({type: 'folder', data: f})} className="p-2 text-slate-400 hover:text-indigo-600"><Edit3 size={16}/></button><button onClick={() => setDeleteConfirm({id: f.id, table: 'folders', label: 'Supprimer'})} className="p-2 text-slate-400 hover:text-rose-600 ml-2"><Trash2 size={16}/></button></td></tr>))}
+                      .map(f => (<tr key={f.id} className="hover:bg-slate-50"><td className="p-6 font-bold text-black">{f.number}</td><td className="p-6 font-black uppercase text-black">{f.name}</td><td className="p-6"><span className={`px-3 py-1 rounded-full text-[8px] font-black text-white ${f.serviceType?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{f.serviceType}</span></td><td className="p-6 text-center font-black text-black">{f.budgetHours}h</td><td className="p-6 text-right"><button onClick={() => setEntityModal({type: 'folder', data: f})} className="p-2 text-slate-400 hover:text-indigo-600"><Edit3 size={16}/></button><button onClick={() => setDeleteConfirm({id: f.id, table: 'folders', label: 'Archiver'})} className="p-2 text-slate-400 hover:text-rose-600 ml-2"><Trash2 size={16}/></button></td></tr>))}
                   </tbody>
                 </table>
               </div>

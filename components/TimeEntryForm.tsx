@@ -47,7 +47,7 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, onQu
   }, [formData.date, existingEntries, currentUser.id]);
 
   const filteredResults = useMemo(() => {
-    let list = folders;
+    let list = folders.filter(f => !f.isArchived); // Ne proposer que les dossiers non archivés
     
     if (currentUser.role === UserRole.COLLABORATOR) {
       list = list.filter(f => (f.serviceType || '').toLowerCase() === currentUser.department.toLowerCase());

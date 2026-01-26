@@ -56,45 +56,42 @@ const PlanningModule: React.FC<Props> = ({
 
   const isAdminOrManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER;
 
-  const isIdInCsv = (csv: string, targetId: string, userDept?: ServiceType) => {
+  const isIdInCsv = (csv: string, targetId: string, userDept?: string) => {
     const ids = (csv || "").split(',').map(id => id.trim().toLowerCase()).filter(Boolean);
     const target = targetId.trim().toLowerCase();
+    const dept = (userDept || "").toLowerCase();
+    
     if (ids.includes(target)) return true;
-    if (ids.includes('pole_audit') && userDept === ServiceType.AUDIT) return true;
-    if (ids.includes('pole_expertise') && userDept === ServiceType.EXPERTISE) return true;
+    if (ids.includes('pole_audit') && dept === 'audit') return true;
+    if (ids.includes('pole_expertise') && dept === 'expertise') return true;
     return false;
   };
 
   const displayTasks = useMemo(() => {
+    const currentId = String(currentUser.id || "").trim().toLowerCase();
+    
     return tasks.filter(t => {
-      // 1. Filtre par pôle
-      if (poleFilter !== 'all' && t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
+      const csv = t.assignedToId || "";
+      const isActuallyAssignedToMe = isIdInCsv(csv, currentId, currentUser.department);
+      
+      // 1. Filtre par pôle (Ignoré si la tâche m'est assignée personnellement ou à mon pôle)
+      if (poleFilter !== 'all' && !isActuallyAssignedToMe) {
+        if (t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
+      }
+
       // 2. Filtre par recherche texte
       if (taskSearch.trim() && !t.title.toLowerCase().includes(taskSearch.toLowerCase())) return false;
       
-      // Suppression du filtre de date restrictif (startDate/endDate) pour afficher tout le planning
-
       const creatorId = String(t.assignedById || "").trim().toLowerCase();
-      const currentId = String(currentUser.id || "").trim().toLowerCase();
-      const csv = t.assignedToId || "";
-      const taskAssignedIds = csv.split(',').map(i => i.trim().toLowerCase()).filter(Boolean);
-      
-      const amIExplicitlyResponsible = taskAssignedIds.includes(currentId);
-      const amIResponsibleByPole = isIdInCsv(csv, currentId, currentUser.department);
-      const isActuallyAssignedToMe = amIExplicitlyResponsible || amIResponsibleByPole;
-      
       const isMeCreator = creatorId === currentId;
 
       if (activeTab === 'mine') {
-        // Tâches créées par moi POUR moi
         return isMeCreator && isActuallyAssignedToMe;
       } 
       if (activeTab === 'received') {
-        // Tâches créées par AUTRUI pour moi (Indiv ou Pôle)
         return !isMeCreator && isActuallyAssignedToMe;
       }
       if (activeTab === 'delegated') {
-        // Tâches créées par moi POUR autrui (et je ne suis pas dedans)
         return isMeCreator && !isActuallyAssignedToMe;
       }
       return true;
@@ -114,11 +111,17 @@ const PlanningModule: React.FC<Props> = ({
 
     setLoading(true);
     try {
+      // On définit le pôle de la tâche : si on vise un pôle précis, on prend celui-là, 
+      // sinon on prend le pôle du créateur ou le filtre actif.
+      let taskPole = poleFilter !== 'all' ? poleFilter : currentUser.department;
+      if (assignedToIds.includes('pole_audit')) taskPole = 'Audit';
+      else if (assignedToIds.includes('pole_expertise')) taskPole = 'Expertise';
+
       await onAddTask({
         title: title.trim(),
         assignedToId: assignedToIds.join(','),
         deadline,
-        pole: (poleFilter !== 'all' ? poleFilter : currentUser.department),
+        pole: taskPole,
         urgency,
         status: 'todo'
       });
@@ -142,7 +145,7 @@ const PlanningModule: React.FC<Props> = ({
     });
 
     if (deletableIds.length === 0) {
-      showNotif('error', "Seul le donneur d'ordre ou l'admin peut supprimer.");
+      showNotif('error', "Action refusée sur ces missions.");
       return;
     }
 

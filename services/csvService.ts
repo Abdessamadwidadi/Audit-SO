@@ -1,6 +1,6 @@
 
 import * as XLSX from 'xlsx';
-import { TimeEntry, ServiceType } from '../types';
+import { TimeEntry, ServiceType, Folder, Collaborator } from '../types';
 
 export const readExcel = (file: File): Promise<any[][]> => {
   return new Promise((resolve, reject) => {
@@ -37,14 +37,13 @@ export const exportToExcel = (filename: string, data: any[][]) => {
 
 /**
  * Exporte les données groupées par dossier
- * Structure : PÔLE | N° Dossier | Nom Dossier | Collaborateur | Exercice | Heures
+ * Résout dynamiquement les noms et numéros à partir des listes de dossiers et collaborateurs
  */
-export const exportGroupedByFolder = (filename: string, entries: TimeEntry[]) => {
+export const exportGroupedByFolder = (filename: string, entries: TimeEntry[], folders: Folder[], collaborators: Collaborator[]) => {
   const data: any[][] = [
     ["PÔLE", "N° DOSSIER", "NOM DOSSIER", "COLLABORATEUR", "EXERCICE", "HEURES"],
   ];
 
-  // Groupement hiérarchique : Dossier -> [Collaborateur + Exercice]
   const folderMap = new Map<string, { 
     service: string,
     name: string, 
@@ -53,21 +52,25 @@ export const exportGroupedByFolder = (filename: string, entries: TimeEntry[]) =>
   }>();
   
   entries.forEach(entry => {
-    const folderKey = entry.folderId || entry.folderName;
+    const folder = folders.find(f => f.id === entry.folderId);
+    const collab = collaborators.find(c => c.id === entry.collaboratorId);
+    
+    const folderKey = entry.folderId;
     if (!folderMap.has(folderKey)) {
       folderMap.set(folderKey, { 
         service: entry.service || "",
-        name: entry.folderName, 
-        number: entry.folderNumber || "",
+        name: folder ? folder.name : "Dossier inconnu", 
+        number: folder ? folder.number : "N/A",
         details: new Map() 
       });
     }
     const folderData = folderMap.get(folderKey)!;
     
-    const detailKey = `${entry.collaboratorName}-${entry.exercice}`;
+    const collabName = collab ? collab.name : "Inconnu";
+    const detailKey = `${collabName}-${entry.exercice}`;
     if (!folderData.details.has(detailKey)) {
       folderData.details.set(detailKey, { 
-        collab: entry.collaboratorName, 
+        collab: collabName, 
         exercice: entry.exercice, 
         hours: 0 
       });
@@ -76,9 +79,7 @@ export const exportGroupedByFolder = (filename: string, entries: TimeEntry[]) =>
     detail.hours += entry.duration;
   });
 
-  // Tri des dossiers par Pôle (Audit en premier) puis par nom
   const sortedFolders = Array.from(folderMap.values()).sort((a, b) => {
-    // Audit avant Expertise
     if (a.service === ServiceType.AUDIT && b.service !== ServiceType.AUDIT) return -1;
     if (a.service !== ServiceType.AUDIT && b.service === ServiceType.AUDIT) return 1;
     return a.name.localeCompare(b.name);
@@ -88,7 +89,6 @@ export const exportGroupedByFolder = (filename: string, entries: TimeEntry[]) =>
     let folderTotalHours = 0;
     folder.details.forEach(d => { folderTotalHours += d.hours; });
 
-    // Ligne de résumé du dossier
     data.push([
       folder.service.toUpperCase(), 
       folder.number, 
@@ -98,7 +98,6 @@ export const exportGroupedByFolder = (filename: string, entries: TimeEntry[]) =>
       folderTotalHours
     ]);
 
-    // Lignes Collaborateurs
     Array.from(folder.details.values())
       .sort((a, b) => a.collab.localeCompare(b.collab) || a.exercice - b.exercice)
       .forEach(d => {
