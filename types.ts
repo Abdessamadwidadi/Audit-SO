@@ -29,11 +29,12 @@ export interface Collaborator {
   name: string;
   department: ServiceType;
   hiringDate: string;
+  dateDepart?: string; // Optionnel : date de fin de contrat
   role: UserRole;
   password?: string;
   startTime: string; // Format "HH:mm"
   endTime: string;   // Format "HH:mm"
-  isActive: boolean; // Nouveau: pour la gestion de l'archivage
+  isActive: boolean; // Pour la gestion de l'archivage (Soft Delete)
 }
 
 export interface Folder {

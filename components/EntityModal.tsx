@@ -14,31 +14,42 @@ interface Props {
 const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, onClose }) => {
   const [formData, setFormData] = useState<any>(
     type === 'collab' 
-      ? { name: '', department: ServiceType.AUDIT, hiringDate: new Date().toISOString().split('T')[0], role: UserRole.COLLABORATOR, password: '', startTime: '09:00', endTime: '18:00', isActive: true }
-      : { name: '', number: '', clientName: '', serviceType: ServiceType.AUDIT, budgetHours: 0 }
+      ? { 
+          name: '', 
+          department: ServiceType.AUDIT, 
+          hiringDate: new Date().toISOString().split('T')[0], 
+          dateDepart: '',
+          role: UserRole.COLLABORATOR, 
+          password: '', 
+          startTime: '09:00', 
+          endTime: '18:00', 
+          isActive: true 
+        }
+      : { 
+          name: '', 
+          number: '', 
+          clientName: '', 
+          serviceType: ServiceType.AUDIT, 
+          budgetHours: 0 
+        }
   );
 
   const [showPin, setShowPin] = useState(false);
 
   useEffect(() => {
     if (initialData) {
-      setFormData({ ...initialData });
+      setFormData({ 
+        ...initialData,
+        isActive: initialData.isActive !== undefined ? initialData.isActive : (initialData.is_active !== false),
+        dateDepart: initialData.dateDepart || initialData.date_depart || ''
+      });
     }
   }, [initialData]);
-
-  const handleScheduleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const [start, end] = e.target.value.split('-');
-    setFormData({ ...formData, startTime: start, endTime: end });
-  };
-
-  const currentSchedule = `${formData.startTime}-${formData.endTime}`;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(formData);
   };
-
-  const isUserAdmin = currentUser.role === UserRole.ADMIN;
 
   return (
     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md flex items-center justify-center z-[250] p-4">
@@ -58,11 +69,11 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
               <div className="flex justify-between items-center bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100">
                 <div>
                   <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Statut du compte</p>
-                  <p className="text-[11px] font-bold text-slate-500">Un collaborateur inactif ne peut plus se connecter.</p>
+                  <p className="text-[11px] font-bold text-slate-500">Actif pour autoriser la connexion.</p>
                 </div>
                 <button 
                   type="button" 
-                  onClick={() => setFormData({...formData, isActive: !formData.isActive})}
+                  onClick={() => setFormData({...formData, isActive: !formData.isActive, dateDepart: !formData.isActive ? '' : new Date().toISOString().split('T')[0]})}
                   className={`flex items-center gap-2 px-4 py-2 rounded-xl font-black text-[9px] uppercase transition-all ${formData.isActive ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-200 text-slate-500'}`}
                 >
                   {formData.isActive ? <CheckCircle2 size={14}/> : <Circle size={14}/>}
@@ -75,23 +86,21 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
                 <input required className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-900 outline-none focus:ring-4 ring-indigo-500/10 transition-all" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="Nom..." />
               </div>
               
-              {isUserAdmin && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Shield size={10} /> Code d'accès (PIN)</label>
-                  <div className="relative">
-                    <input required 
-                      type={showPin ? "text" : "password"}
-                      className="w-full p-4 bg-slate-50 border border-indigo-200 rounded-2xl font-black text-center text-indigo-600 tracking-[0.5em] text-2xl outline-none focus:ring-4 ring-indigo-500/10 transition-all" 
-                      value={formData.password} 
-                      onChange={e => setFormData({...formData, password: e.target.value})} 
-                      placeholder="0000" 
-                    />
-                    <button type="button" onClick={() => setShowPin(!showPin)} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-300 hover:text-indigo-600">
-                       {showPin ? <EyeOff size={18}/> : <Eye size={18}/>}
-                    </button>
-                  </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-900 uppercase tracking-widest ml-1 flex items-center gap-1"><Shield size={10} /> Code d'accès (PIN)</label>
+                <div className="relative">
+                  <input required 
+                    type={showPin ? "text" : "password"}
+                    className="w-full p-4 bg-slate-50 border border-indigo-200 rounded-2xl font-black text-center text-indigo-600 tracking-[0.5em] text-2xl outline-none focus:ring-4 ring-indigo-500/10 transition-all" 
+                    value={formData.password} 
+                    onChange={e => setFormData({...formData, password: e.target.value})} 
+                    placeholder="0000" 
+                  />
+                  <button type="button" onClick={() => setShowPin(!showPin)} className="absolute right-4 top-1/2 -translate-y-1/2 text-indigo-300 hover:text-indigo-600">
+                     {showPin ? <EyeOff size={18}/> : <Eye size={18}/>}
+                  </button>
                 </div>
-              )}
+              </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -107,6 +116,13 @@ const EntityModal: React.FC<Props> = ({ type, initialData, currentUser, onSave, 
                   </select>
                 </div>
               </div>
+
+              {!formData.isActive && (
+                <div className="space-y-2 animate-in slide-in-from-top-2">
+                  <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest ml-1 flex items-center gap-1"><AlertTriangle size={10} /> Date de départ / fin de contrat</label>
+                  <input type="date" className="w-full p-4 bg-rose-50 border border-rose-100 rounded-2xl font-bold text-rose-900" value={formData.dateDepart} onChange={e => setFormData({...formData, dateDepart: e.target.value})} />
+                </div>
+              )}
             </>
           ) : (
             <>

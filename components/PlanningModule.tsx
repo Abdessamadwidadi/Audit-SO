@@ -1,20 +1,23 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
-  Plus, CheckCircle2, Loader2, Trash2, Search, 
-  AlertCircle, X, CheckCircle, ChevronDown, Users as UsersIcon,
-  CheckSquare, Square, Clock, Calendar, AlertTriangle, UserPlus
+  Plus, Loader2, Trash2, Search, 
+  AlertCircle, X, CheckCircle, ChevronDown, ChevronRight,
+  Clock, Calendar, AlertTriangle, Users as UsersIcon, Shield,
+  UserPlus, CheckSquare, Square
 } from 'lucide-react';
-import { TaskAssignment, Collaborator, UserRole, ServiceType, TaskUrgency } from '../types';
+import { TaskAssignment, Collaborator, ServiceType, TaskUrgency, UserRole } from '../types';
 import ConfirmModal from './ConfirmModal';
 
 interface Props {
   currentUser: Collaborator;
   tasks: TaskAssignment[];
-  team: Collaborator[];
+  team: Collaborator[]; 
+  allCollaborators: Collaborator[];
   onAddTask: (task: Partial<TaskAssignment>) => Promise<void>;
   onUpdateTask: (id: string, updates: Partial<TaskAssignment>) => Promise<void>;
   onDeleteTask: (id: string) => Promise<void>;
+  onDeleteTasks: (ids: string[]) => Promise<void>;
   showNotif: (type: 'success' | 'error', msg: string) => void;
   poleFilter: string;
   startDate: string;
@@ -22,195 +25,169 @@ interface Props {
 }
 
 const PlanningModule: React.FC<Props> = ({ 
-  currentUser, tasks, team, onAddTask, onUpdateTask, onDeleteTask, showNotif, poleFilter, startDate, endDate
+  currentUser, tasks, team, allCollaborators, onAddTask, onUpdateTask, onDeleteTask, onDeleteTasks, showNotif, poleFilter, startDate, endDate
 }) => {
-  const [activeTab, setActiveTab] = useState<'mine' | 'received' | 'delegated'>('mine');
+  const isAdminOrManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER;
+  const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'received' | 'delegated'>(isAdminOrManager ? 'all' : 'mine');
   const [taskSearch, setTaskSearch] = useState('');
   const [loading, setLoading] = useState(false);
-  const [taskToDeleteId, setTaskToDeleteId] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showOnlyRemaining, setShowOnlyRemaining] = useState(false);
-
-  // Form State
+  
   const [title, setTitle] = useState('');
   const [assignedToIds, setAssignedToIds] = useState<string[]>([currentUser.id]);
   const [urgency, setUrgency] = useState<TaskUrgency>('normal');
   const [deadline, setDeadline] = useState(new Date().toISOString().split('T')[0]);
   const [isFormDropdownOpen, setIsFormDropdownOpen] = useState(false);
-
-  // Reassign State
-  const [reassigningTaskId, setReassigningTaskId] = useState<string | null>(null);
-  const [newAssignments, setNewAssignments] = useState<string[]>([]);
+  
+  const [reassigningTask, setReassigningTask] = useState<TaskAssignment | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const reassignDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsFormDropdownOpen(false);
-      }
+    const handleClick = (e: MouseEvent) => { 
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setIsFormDropdownOpen(false); 
+      if (reassignDropdownRef.current && !reassignDropdownRef.current.contains(e.target as Node)) setReassigningTask(null);
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handleClick); return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const isAdminOrManager = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER;
+  const currentId = String(currentUser.id).trim().toLowerCase();
 
-  /**
-   * Vérifie si un ID cible ou un pôle est contenu dans le champ assignedToId (format CSV)
-   */
   const isIdInCsv = (csv: string, targetId: string, userDept?: string) => {
     if (!csv) return false;
-    const ids = csv.split(',').map(id => id.trim().toLowerCase()).filter(Boolean);
+    const ids = csv.split(',').map(id => id.trim().toLowerCase());
     const target = targetId.trim().toLowerCase();
     const dept = (userDept || "").toLowerCase();
-    
-    // Correspondance ID direct
-    if (ids.includes(target)) return true;
-    
-    // Correspondance Pôle (si l'utilisateur fait partie du pôle assigné)
-    if (ids.includes('pole_audit') && dept === 'audit') return true;
-    if (ids.includes('pole_expertise') && dept === 'expertise') return true;
-    
-    return false;
+    return ids.includes(target) || (ids.includes('pole_audit') && dept === 'audit') || (ids.includes('pole_expertise') && dept === 'expertise');
+  };
+
+  const isNearDeadline = (deadlineStr: string) => {
+    const d = new Date(deadlineStr);
+    const now = new Date();
+    const diff = d.getTime() - now.getTime();
+    const hours = diff / (1000 * 60 * 60);
+    return hours >= 0 && hours <= 24;
+  };
+
+  const getCollabInfo = (id: string) => {
+    const cleanId = id.trim().toLowerCase();
+    if (cleanId === 'pole_audit') return { name: 'PÔLE AUDIT', dept: ServiceType.AUDIT, isPole: true };
+    if (cleanId === 'pole_expertise') return { name: 'PÔLE EXPERTISE', dept: ServiceType.EXPERTISE, isPole: true };
+    const found = allCollaborators.find(c => String(c.id).trim().toLowerCase() === cleanId);
+    return found ? { name: found.name, dept: found.department, isPole: false } : { name: "INCONNU", dept: ServiceType.EXPERTISE, isPole: false };
   };
 
   const displayTasks = useMemo(() => {
-    const currentId = String(currentUser.id || "").trim().toLowerCase();
-    
-    return tasks.filter(t => {
+    const filtered = tasks.filter(t => {
       const csv = t.assignedToId || "";
-      const isActuallyAssignedToMe = isIdInCsv(csv, currentId, currentUser.department);
-      
-      // Filtre global par pôle : 
-      // On l'ignore si la tâche m'est personnellement adressée (priorité à l'assignation)
-      if (poleFilter !== 'all' && !isActuallyAssignedToMe) {
-        if (t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
-      }
-
-      // Filtre recherche texte
-      if (taskSearch.trim() && !t.title.toLowerCase().includes(taskSearch.toLowerCase())) return false;
-      
-      const creatorId = String(t.assignedById || "").trim().toLowerCase();
+      const creatorId = String(t.assignedById).trim().toLowerCase();
       const isMeCreator = creatorId === currentId;
+      const isAssignedToMe = isIdInCsv(csv, currentId, currentUser.department);
+      
+      const responsibleIds = csv.split(',').map(id => id.trim().toLowerCase());
+      const isStrictlyPrivateForCreator = responsibleIds.length === 1 && responsibleIds[0] === creatorId;
 
+      if (poleFilter !== 'all' && t.pole?.toLowerCase() !== poleFilter.toLowerCase()) return false;
+      if (taskSearch.trim() && !t.title.toLowerCase().includes(taskSearch.toLowerCase())) return false;
+
+      // Logique des onglets avec protection de la vie privée
+      if (activeTab === 'all') {
+        if (isAdminOrManager) {
+          // Un Admin/Manager voit tout SAUF les To-Do strictement privées des autres
+          if (isStrictlyPrivateForCreator && !isMeCreator) return false;
+          return true;
+        }
+        return isAssignedToMe || isMeCreator;
+      }
+      
       if (activeTab === 'mine') {
-        // "Individuel" : tâches que j'ai créées ET qui me sont assignées
-        return isMeCreator && isActuallyAssignedToMe;
-      } 
+        // INDIVIDUEL : Donneur d'ordre = MOI ET Responsable = MOI
+        return isMeCreator && isAssignedToMe;
+      }
+      
       if (activeTab === 'received') {
-        // "Reçus" : tâches que je n'ai pas créées MAIS qui me sont assignées (ou à mon pôle)
-        return !isMeCreator && isActuallyAssignedToMe;
+        // REÇUS : Responsable = MOI MAIS Donneur d'ordre = QUELQU'UN D'AUTRE
+        return isAssignedToMe && !isMeCreator;
       }
+      
       if (activeTab === 'delegated') {
-        // "Déléguées" : tâches que j'ai créées MAIS qui ne me sont PAS assignées (seulement aux autres)
-        return isMeCreator && !isActuallyAssignedToMe;
+        // DÉLÉGUÉS : Donneur d'ordre = MOI MAIS Responsable = AUTRE/POLE
+        return isMeCreator && !isStrictlyPrivateForCreator;
       }
+      
       return true;
     }).filter(t => !showOnlyRemaining || t.status === 'todo');
-  }, [tasks, activeTab, poleFilter, taskSearch, currentUser, showOnlyRemaining]);
+
+    return [...filtered].sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'todo' ? -1 : 1;
+      const weights = { critique: 3, urgent: 2, normal: 1 };
+      return (weights[b.urgency] || 1) - (weights[a.urgency] || 1);
+    });
+  }, [tasks, activeTab, poleFilter, taskSearch, currentUser, showOnlyRemaining, currentId, isAdminOrManager]);
 
   const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) return;
-    
-    if (currentUser.role === UserRole.COLLABORATOR) {
-        if (assignedToIds.length !== 1 || assignedToIds[0] !== currentUser.id) {
-            showNotif('error', "Un collaborateur ne peut s'assigner que lui-même.");
-            return;
-        }
-    }
-
+    e.preventDefault(); if (!title.trim()) return;
     setLoading(true);
     try {
       let taskPole = poleFilter !== 'all' ? poleFilter : currentUser.department;
       if (assignedToIds.includes('pole_audit')) taskPole = 'Audit';
       else if (assignedToIds.includes('pole_expertise')) taskPole = 'Expertise';
-
-      await onAddTask({
-        title: title.trim(),
-        assignedToId: assignedToIds.join(','),
-        deadline,
-        pole: taskPole,
-        urgency,
-        status: 'todo'
+      
+      await onAddTask({ 
+        title: title.trim(), 
+        assignedToId: assignedToIds.join(','), 
+        deadline, 
+        pole: taskPole, 
+        urgency, 
+        status: 'todo' 
       });
-      setTitle(''); 
-      setAssignedToIds([currentUser.id]); 
-      setIsFormDropdownOpen(false);
-      showNotif('success', "Mission créée");
+      setTitle(''); setAssignedToIds([currentUser.id]); setIsFormDropdownOpen(false); showNotif('success', "Mission créée");
     } catch (err) { showNotif('error', "Erreur"); }
     finally { setLoading(false); }
   };
 
-  const canDeleteTask = (task: TaskAssignment) => {
-    if (currentUser.role === UserRole.ADMIN) return true;
-    return String(task.assignedById).trim().toLowerCase() === String(currentUser.id).trim().toLowerCase();
-  };
-
-  const handleMassDelete = async () => {
-    const deletableIds = selectedIds.filter(id => {
-      const task = tasks.find(t => t.id === id);
-      return task && canDeleteTask(task);
-    });
-
-    if (deletableIds.length === 0) {
-      showNotif('error', "Action refusée sur ces missions.");
-      return;
-    }
-
-    if (!window.confirm(`Supprimer ${deletableIds.length} missions ?`)) return;
-    setLoading(true);
+  const handleReassign = async (taskId: string, newIds: string[]) => {
     try {
-      for (const id of deletableIds) await onDeleteTask(id);
-      setSelectedIds([]); showNotif('success', 'Missions supprimées');
-    } catch (e) { showNotif('error', 'Erreur suppression'); }
-    finally { setLoading(false); }
+      await onUpdateTask(taskId, { assignedToId: newIds.join(',') });
+      setReassigningTask(null);
+      showNotif('success', 'Mission réaffectée');
+    } catch (err) { showNotif('error', 'Erreur réaffectation'); }
   };
 
-  const getCollabInfo = (id: string) => {
-    const cleanId = id.trim().toLowerCase();
-    if (cleanId === 'pole_audit') return { name: 'Pôle Audit', dept: ServiceType.AUDIT };
-    if (cleanId === 'pole_expertise') return { name: 'Pôle Expertise', dept: ServiceType.EXPERTISE };
-    const found = team.find(c => String(c.id).trim().toLowerCase() === cleanId);
-    return found ? { name: found.name, dept: found.department } : { name: "INCONNU", dept: ServiceType.EXPERTISE };
+  const toggleSelection = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
   };
 
-  const getUrgencyLabel = (u: string) => {
-    switch (u) {
-      case 'critique': return 'Urgente';
-      case 'urgent': return 'Haute';
-      case 'normal': return 'Normale';
-      default: return 'Faible';
-    }
-  };
-
-  const handleReassign = async (taskId: string) => {
-    if (newAssignments.length === 0) return;
-    setLoading(true);
-    try {
-      await onUpdateTask(taskId, { assignedToId: newAssignments.join(',') });
-      setReassigningTaskId(null);
-      setNewAssignments([]);
-      showNotif('success', "Mission réassignée");
-    } catch (err) { showNotif('error', "Erreur de réaffectation"); }
-    finally { setLoading(false); }
-  };
-
-  const toggleAssignment = (id: string, currentList: string[], setter: (val: string[]) => void) => {
-    if (currentList.includes(id)) {
-      setter(currentList.filter(i => i !== id));
+  const toggleSelectAll = () => {
+    if (selectedIds.size === displayTasks.length) {
+      setSelectedIds(new Set());
     } else {
-      setter([...currentList, id]);
+      const deletableIds = displayTasks
+        .filter(t => String(t.assignedById).trim().toLowerCase() === currentId)
+        .map(t => t.id);
+      setSelectedIds(new Set(deletableIds));
     }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    onDeleteTasks(Array.from(selectedIds));
+    setSelectedIds(new Set());
+  };
+
+  const toggleAssignmentInForm = (id: string) => {
+    if (!isAdminOrManager) return;
+    setAssignedToIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
   return (
     <div className="space-y-8 animate-in fade-in text-black">
-      {taskToDeleteId && <ConfirmModal title="Supprimer ?" message="Seul le créateur ou l'admin peut supprimer." onConfirm={async () => { await onDeleteTask(taskToDeleteId); setTaskToDeleteId(null); showNotif('success', 'Supprimé'); }} onCancel={() => setTaskToDeleteId(null)} />}
-
       <div className="bg-white p-8 rounded-[2rem] border-2 border-slate-100 shadow-xl relative">
-        <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-600 rounded-l-[2rem]"></div>
         <form onSubmit={handleCreateTask} className="grid grid-cols-1 md:grid-cols-12 gap-5 items-end">
           <div className="md:col-span-4 space-y-2">
             <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Intitulé de la mission</label>
@@ -220,37 +197,37 @@ const PlanningModule: React.FC<Props> = ({
           <div className="md:col-span-3 space-y-2 relative" ref={dropdownRef}>
             <label className="text-[10px] font-black uppercase text-slate-400 ml-1">Responsables ({assignedToIds.length})</label>
             <div 
-              onClick={() => currentUser.role !== UserRole.COLLABORATOR && setIsFormDropdownOpen(!isFormDropdownOpen)}
-              className={`w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl min-h-[52px] flex flex-wrap gap-1.5 items-center cursor-pointer ${currentUser.role === UserRole.COLLABORATOR ? 'opacity-60 cursor-not-allowed' : ''}`}
+              onClick={() => isAdminOrManager && setIsFormDropdownOpen(!isFormDropdownOpen)} 
+              className={`w-full p-3 border border-slate-100 rounded-2xl min-h-[52px] flex flex-wrap gap-1.5 items-center ${isAdminOrManager ? 'bg-slate-50 cursor-pointer' : 'bg-slate-100 cursor-not-allowed opacity-80'}`}
             >
-                {assignedToIds.map(id => {
-                  const info = getCollabInfo(id);
-                  return (
-                    <div key={id} className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[8px] font-black uppercase text-white ${info.dept?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>
-                      {info.name.split(' ')[0]}
-                      {currentUser.role !== UserRole.COLLABORATOR && (
-                        <button type="button" onClick={(e) => { e.stopPropagation(); setAssignedToIds(prev => prev.filter(i => i !== id)); }}><X size={10}/></button>
-                      )}
-                    </div>
-                  );
-                })}
-                {assignedToIds.length === 0 && <span className="text-slate-400 text-[10px]">Choisir...</span>}
-                <ChevronDown size={14} className="ml-auto text-slate-300" />
+              {assignedToIds.map(id => {
+                const info = getCollabInfo(id);
+                return (
+                  <div key={id} className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[8px] font-black uppercase text-white ${info.dept?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'} ${info.isPole ? 'ring-2 ring-white/50' : ''}`}>
+                    {info.name.split(' ')[0]} {isAdminOrManager && <X size={10} onClick={(e) => { e.stopPropagation(); setAssignedToIds(assignedToIds.filter(i => i !== id)); }}/>}
+                  </div>
+                );
+              })}
+              {isAdminOrManager && <ChevronDown size={14} className="ml-auto text-slate-300" />}
+              {!isAdminOrManager && <Shield size={12} className="ml-auto text-slate-400" title="Auto-assignation uniquement" />}
             </div>
-            {isFormDropdownOpen && (
-              <div className="absolute top-full left-0 w-full mt-2 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 z-[999] max-h-60 overflow-y-auto">
-                <div className="p-2 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b mb-1">Équipe</div>
+            
+            {isAdminOrManager && isFormDropdownOpen && (
+              <div className="absolute top-full left-0 w-full mt-2 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 z-[999] max-h-80 overflow-y-auto">
+                <p className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b mb-1">Pôles complets</p>
+                <div onClick={() => toggleAssignmentInForm('pole_audit')} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${assignedToIds.includes('pole_audit') ? 'bg-blue-50 text-blue-700' : 'hover:bg-slate-50 text-slate-900'}`}>
+                  <span className="text-[10px] font-black flex items-center gap-2"><UsersIcon size={14}/> TOUT LE PÔLE AUDIT</span>
+                  {assignedToIds.includes('pole_audit') && <CheckCircle size={16} className="text-blue-600" />}
+                </div>
+                <div onClick={() => toggleAssignmentInForm('pole_expertise')} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${assignedToIds.includes('pole_expertise') ? 'bg-orange-50 text-orange-700' : 'hover:bg-slate-50 text-slate-900'}`}>
+                  <span className="text-[10px] font-black flex items-center gap-2"><UsersIcon size={14}/> TOUT LE PÔLE EXPERTISE</span>
+                  {assignedToIds.includes('pole_expertise') && <CheckCircle size={16} className="text-orange-600" />}
+                </div>
+                <p className="px-3 py-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b my-1">Collaborateurs</p>
                 {team.map(c => (
-                  <div key={c.id} onClick={() => toggleAssignment(c.id, assignedToIds, setAssignedToIds)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${assignedToIds.includes(c.id) ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-900'}`}>
+                  <div key={c.id} onClick={() => toggleAssignmentInForm(c.id)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${assignedToIds.includes(c.id) ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-900'}`}>
                     <span className="text-[10px] font-bold">{c.name}</span>
                     {assignedToIds.includes(c.id) ? <CheckCircle size={16} className="text-indigo-600" /> : <div className="w-4 h-4 border-2 border-slate-200 rounded-full"></div>}
-                  </div>
-                ))}
-                <div className="p-2 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-t mt-2 mb-1">Pôles</div>
-                {['pole_audit', 'pole_expertise'].map(pid => (
-                  <div key={pid} onClick={() => toggleAssignment(pid, assignedToIds, setAssignedToIds)} className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${assignedToIds.includes(pid) ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-slate-50 text-slate-900'}`}>
-                    <span className="text-[10px] font-black uppercase">{pid.replace('_', ' ')}</span>
-                    {assignedToIds.includes(pid) ? <CheckCircle size={16} className="text-indigo-600" /> : <div className="w-4 h-4 border-2 border-slate-200 rounded-full"></div>}
                   </div>
                 ))}
               </div>
@@ -261,126 +238,111 @@ const PlanningModule: React.FC<Props> = ({
              <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400">Échéance</label><input type="date" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-black text-xs" value={deadline} onChange={e => setDeadline(e.target.value)} /></div>
              <div className="space-y-2"><label className="text-[10px] font-black uppercase text-slate-400">Priorité</label><select className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-black text-xs" value={urgency} onChange={e => setUrgency(e.target.value as any)}><option value="normal">Normale</option><option value="urgent">Haute</option><option value="critique">Urgente</option></select></div>
           </div>
-          <div className="md:col-span-2"><button type="submit" className="w-full h-14 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] shadow-xl flex items-center justify-center gap-2 transition-all hover:bg-slate-900">{loading ? <Loader2 className="animate-spin" size={16}/> : <Plus size={16}/>} Créer</button></div>
+          <div className="md:col-span-2"><button type="submit" className="w-full h-14 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 hover:bg-slate-900 shadow-lg">{loading ? <Loader2 className="animate-spin" size={16}/> : <Plus size={16}/>} Créer</button></div>
         </form>
       </div>
 
       <div className="flex flex-wrap justify-between items-center gap-4">
-        <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
-          {['mine', 'received', 'delegated'].map(t => (
-            <button key={t} onClick={() => setActiveTab(t as any)} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${activeTab === t ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400'}`}>
-              {t === 'mine' ? 'Individuel' : t === 'received' ? 'REÇUS' : 'Déléguées'}
-            </button>
-          ))}
+        <div className="flex items-center gap-4 flex-1">
+          <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+            {isAdminOrManager && <button onClick={() => setActiveTab('all')} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${activeTab === 'all' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>Toutes</button>}
+            {[ {id: 'mine', l: 'Individuel'}, {id: 'received', l: 'Reçus'}, {id: 'delegated', l: 'Déléguées'} ].map(t => (
+              <button key={t.id} onClick={() => setActiveTab(t.id as any)} className={`px-6 py-2.5 rounded-xl font-black text-[9px] uppercase transition-all ${activeTab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400'}`}>
+                {t.l}
+              </button>
+            ))}
+          </div>
+          <div className="relative flex-1 max-w-xs"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16}/><input type="text" placeholder="Rechercher..." className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl font-bold text-black text-[10px] outline-none" value={taskSearch} onChange={e => setTaskSearch(e.target.value)} /></div>
         </div>
-        <div className="flex gap-3">
-           <button onClick={() => setShowOnlyRemaining(!showOnlyRemaining)} className={`px-5 py-2.5 rounded-xl text-[9px] font-black uppercase transition-all ${showOnlyRemaining ? 'bg-slate-900 text-white' : 'bg-white border text-slate-400'}`}>À faire uniquement</button>
-           {selectedIds.length > 0 && <button onClick={handleMassDelete} className="px-5 py-2.5 bg-rose-600 text-white rounded-xl text-[9px] font-black uppercase flex items-center gap-2 shadow-xl animate-in slide-in-from-right transition-all hover:bg-rose-700"><Trash2 size={14}/> Supprimer ({selectedIds.length})</button>}
+        <div className="flex items-center gap-3">
+          {selectedIds.size > 0 && (
+            <button onClick={handleBulkDelete} className="px-5 py-2.5 bg-rose-600 text-white rounded-xl text-[9px] font-black uppercase flex items-center gap-2 shadow-lg animate-in zoom-in"><Trash2 size={14}/> Supprimer ({selectedIds.size})</button>
+          )}
+          <button onClick={() => setShowOnlyRemaining(!showOnlyRemaining)} className={`px-5 py-2.5 rounded-xl text-[9px] font-black uppercase transition-all ${showOnlyRemaining ? 'bg-slate-900 text-white' : 'bg-white border text-slate-400'}`}>À faire uniquement</button>
         </div>
       </div>
 
-      <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl text-black">
+      <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl text-black overflow-hidden relative">
         <table className="w-full text-left table-fixed">
-          <thead className="bg-slate-50 border-b text-[10px] font-black uppercase text-slate-500">
+          <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b">
             <tr>
-              <th className="p-6 w-16 text-center"><button onClick={() => setSelectedIds(selectedIds.length === displayTasks.length ? [] : displayTasks.map(t => t.id))}>{selectedIds.length === displayTasks.length && displayTasks.length > 0 ? <CheckSquare size={18} className="text-indigo-600"/> : <Square size={18}/>}</button></th>
+              <th className="p-6 w-12 text-center">
+                <button onClick={toggleSelectAll} className="text-white hover:text-indigo-400 transition-colors">
+                  {selectedIds.size === displayTasks.length && displayTasks.length > 0 ? <CheckSquare size={18}/> : <Square size={18}/>}
+                </button>
+              </th>
               <th className="p-6 text-center w-20">État</th>
               <th className="p-6">Mission / Dossier</th>
               <th className="p-6 text-center w-28">Priorité</th>
               <th className="p-6 text-center w-32">Échéance</th>
               <th className="p-6">RESPONSABLE(S)</th>
               <th className="p-6">Donneur d'ordre</th>
-              <th className="p-6 text-right w-24">Actions</th>
+              <th className="p-6 text-right w-36">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {displayTasks.map(task => {
-              const assignedIds = (task.assignedToId || "").split(',').map(id => id.trim()).filter(Boolean);
-              const isSelected = selectedIds.includes(task.id);
-              const deadlineDate = new Date(task.deadline);
-              const now = new Date();
-              const diffHours = (deadlineDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-              const isUrgentDue = task.status === 'todo' && diffHours < 24 && diffHours > -24;
-              const isOverdue = task.status === 'todo' && deadlineDate < now && !isUrgentDue;
-              const isHighPriority = task.urgency === 'critique' || task.urgency === 'urgent';
-              const canDelete = canDeleteTask(task);
-              const isReassigning = reassigningTaskId === task.id;
+              const assignedIds = (task.assignedToId || "").split(',').filter(Boolean);
+              const creator = getCollabInfo(task.assignedById);
+              const isCriticallyClose = isNearDeadline(task.deadline) && task.status === 'todo';
+              const isOwner = String(task.assignedById).trim().toLowerCase() === currentId;
 
               return (
-                <tr key={task.id} className={`group transition-all text-xs ${task.status === 'done' ? 'opacity-40 grayscale bg-slate-50/50' : isSelected ? 'bg-indigo-50/50' : 'hover:bg-indigo-50/20'}`}>
-                  <td className="p-6 text-center"><button onClick={() => setSelectedIds(prev => prev.includes(task.id) ? prev.filter(i => i !== task.id) : [...prev, task.id])}>{isSelected ? <CheckSquare size={18} className="text-indigo-600"/> : <Square size={18}/>}</button></td>
-                  <td className="p-6 text-center"><button onClick={() => onUpdateTask(task.id, {status: task.status === 'todo' ? 'done' : 'todo'})} className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center mx-auto transition-all ${task.status === 'done' ? 'border-emerald-500 text-emerald-500 bg-emerald-50' : 'border-slate-200 text-slate-300 hover:border-emerald-500'}`}>{task.status === 'done' ? <CheckCircle size={20} /> : <Clock size={20} />}</button></td>
-                  <td className="p-6 font-black uppercase text-black break-words leading-tight">
-                    <div className="flex flex-col gap-1.5">
-                      {task.title}
-                      {(isUrgentDue || task.urgency === 'critique') && <span className="w-fit flex items-center gap-1 px-2 py-1 bg-rose-600 text-white rounded text-[8px] font-black animate-pulse shadow-[0_0_12px_rgba(225,29,72,0.8)]"><AlertTriangle size={10}/> URGENTE</span>}
-                      {isOverdue && <span className="w-fit flex items-center gap-1 px-2 py-1 bg-slate-900 text-white rounded text-[8px] font-black uppercase">En retard</span>}
-                    </div>
-                  </td>
+                <tr key={task.id} className={`group transition-all text-xs ${task.status === 'done' ? 'opacity-40 grayscale bg-slate-50' : isCriticallyClose ? 'bg-rose-50' : 'hover:bg-indigo-50/20'}`}>
                   <td className="p-6 text-center">
-                    <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${isHighPriority ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'}`}>
-                      {getUrgencyLabel(task.urgency)}
-                    </span>
+                    <button onClick={() => toggleSelection(task.id)} disabled={!isOwner} className={`transition-colors ${isOwner ? 'text-slate-300 hover:text-indigo-600' : 'text-slate-100 cursor-not-allowed'}`}>
+                      {selectedIds.has(task.id) ? <CheckSquare size={18} className="text-indigo-600"/> : <Square size={18}/>}
+                    </button>
                   </td>
-                  <td className="p-6 text-center font-bold text-black">
-                    <div className="flex flex-col items-center">
-                      <Calendar size={14} className="text-slate-300 mb-1"/>
-                      {new Date(task.deadline).toLocaleDateString('fr-FR')}
+                  <td className="p-6 text-center"><button onClick={() => onUpdateTask(task.id, {status: task.status === 'todo' ? 'done' : 'todo'})} className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center mx-auto transition-all ${task.status === 'done' ? 'border-emerald-500 text-emerald-500 bg-emerald-50' : 'border-slate-200 text-slate-300 hover:border-emerald-500'}`}>{task.status === 'done' ? <CheckCircle size={20} /> : <Clock size={20} />}</button></td>
+                  <td className="p-6 font-black uppercase text-slate-900 leading-tight">
+                    <div className="flex flex-col gap-2">
+                      {task.title}
+                      {isCriticallyClose && <span className="w-fit flex items-center gap-1 px-2 py-1 bg-rose-600 text-white rounded text-[8px] font-black uppercase animate-pulse"><AlertTriangle size={10}/> -24H URGENT</span>}
                     </div>
                   </td>
-                  <td className="p-6 relative">
-                    {isReassigning ? (
-                      <div className="absolute inset-x-2 top-2 z-[999] bg-white border-2 border-indigo-600 shadow-2xl rounded-2xl p-4 animate-in zoom-in">
-                          <div className="text-[10px] font-black text-indigo-600 uppercase mb-3 flex items-center gap-2"><UserPlus size={14}/> Modifier Responsables</div>
-                          <div className="w-full p-2.5 bg-slate-50 border border-indigo-100 rounded-xl min-h-[44px] flex flex-wrap gap-1.5 items-center mb-3">
-                            {newAssignments.map(id => (
-                              <div key={id} className={`flex items-center gap-1 px-2 py-1 rounded text-[8px] font-black uppercase text-white ${getCollabInfo(id).dept?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>
-                                {getCollabInfo(id).name.split(' ')[0]}
-                                <button onClick={(e) => { e.stopPropagation(); setNewAssignments(prev => prev.filter(i => i !== id)); }}><X size={10}/></button>
-                              </div>
-                            ))}
+                  <td className="p-6 text-center"><span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${task.urgency === 'critique' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-500'}`}>{task.urgency}</span></td>
+                  <td className="p-6 text-center font-bold text-slate-900">{new Date(task.deadline).toLocaleDateString('fr-FR')}</td>
+                  <td className="p-6">
+                    <div className="flex flex-wrap gap-1.5">
+                      {assignedIds.map(id => {
+                        const info = getCollabInfo(id);
+                        return (
+                          <div key={id} className={`px-2.5 py-1 rounded-lg text-[8px] font-black uppercase text-white ${info.dept?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'} ${info.isPole ? 'ring-1 ring-white/50 border border-white/20 shadow-sm' : ''}`}>
+                            {info.name}
                           </div>
-                          <div className="max-h-52 overflow-y-auto divide-y divide-slate-50 border rounded-xl mb-3 shadow-inner bg-slate-50/30">
-                            {team.map(c => (
-                              <div key={c.id} onClick={() => toggleAssignment(c.id, newAssignments, setNewAssignments)} className={`flex items-center justify-between p-3 cursor-pointer text-[10px] font-bold ${newAssignments.includes(c.id) ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-white text-slate-900'}`}>{c.name}{newAssignments.includes(c.id) && <CheckCircle size={14} className="text-indigo-600"/>}</div>
-                            ))}
-                            <div className="bg-slate-100/50 p-2 text-[8px] font-black uppercase text-slate-400">Pôles</div>
-                            {['pole_audit', 'pole_expertise'].map(pid => (
-                              <div key={pid} onClick={() => toggleAssignment(pid, newAssignments, setNewAssignments)} className={`flex items-center justify-between p-3 cursor-pointer text-[10px] font-black uppercase ${newAssignments.includes(pid) ? 'bg-indigo-50 text-indigo-700' : 'hover:bg-white text-slate-900'}`}>{pid.replace('_', ' ')}{newAssignments.includes(pid) && <CheckCircle size={14} className="text-indigo-600"/>}</div>
-                            ))}
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <button onClick={() => { setReassigningTaskId(null); setNewAssignments([]); }} className="py-3 bg-slate-100 text-slate-600 text-[10px] font-black rounded-xl uppercase hover:bg-slate-200">Annuler</button>
-                            <button onClick={() => handleReassign(task.id)} className="py-3 bg-indigo-600 text-white text-[10px] font-black rounded-xl uppercase shadow-xl hover:bg-slate-900">Enregistrer</button>
-                          </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {assignedIds.map(id => {
-                          const info = getCollabInfo(id);
-                          return (
-                            <div key={id} className={`px-2.5 py-1 rounded-lg text-[8px] font-black uppercase text-white ${info.dept?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>
-                              {info.name}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                        );
+                      })}
+                    </div>
                   </td>
-                  <td className="p-6 font-bold text-indigo-700 uppercase break-words">{team.find(c => String(c.id).trim() === String(task.assignedById).trim())?.name || "INCONNU"}</td>
+                  <td className="p-6 font-bold text-indigo-700 uppercase">{creator.name}</td>
                   <td className="p-6 text-right">
-                    <div className="flex justify-end gap-2">
-                      {isAdminOrManager && !isReassigning && (
-                        <button 
-                          onClick={() => { setReassigningTaskId(task.id); setNewAssignments([...assignedIds]); }} 
-                          className="p-3 bg-indigo-50 text-indigo-600 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-indigo-600 hover:text-white"
-                          title="Réassigner"
-                        >
-                          <UserPlus size={18}/>
-                        </button>
+                    <div className="flex justify-end items-center gap-1">
+                      {isOwner && (
+                        <div className="relative" ref={reassigningTask?.id === task.id ? reassignDropdownRef : null}>
+                           <button onClick={() => setReassigningTask(reassigningTask?.id === task.id ? null : task)} className="p-3 bg-indigo-50 text-indigo-600 rounded-xl opacity-0 group-hover:opacity-100 hover:bg-indigo-600 hover:text-white transition-all" title="Réaffecter"><UserPlus size={18}/></button>
+                           {reassigningTask?.id === task.id && (
+                             <div className="absolute right-0 top-full mt-2 bg-white border border-slate-200 shadow-2xl rounded-2xl p-2 z-[999] w-64 animate-in zoom-in slide-in-from-top-2">
+                               <p className="px-3 py-2 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b mb-2 text-center">Réaffecter à...</p>
+                               <div className="max-h-60 overflow-y-auto">
+                                 {['pole_audit', 'pole_expertise'].map(pId => (
+                                   <div key={pId} onClick={() => handleReassign(task.id, [pId])} className="p-3 hover:bg-slate-50 rounded-xl cursor-pointer text-[9px] font-black uppercase text-indigo-600 flex justify-between items-center transition-colors">
+                                      {pId.replace('_', ' ')} <ChevronRight size={14}/>
+                                   </div>
+                                 ))}
+                                 <div className="h-px bg-slate-100 my-1"></div>
+                                 {team.map(c => (
+                                   <div key={c.id} onClick={() => handleReassign(task.id, [c.id])} className="p-3 hover:bg-slate-50 rounded-xl cursor-pointer text-[10px] font-bold text-slate-900 flex justify-between items-center transition-colors">
+                                      {c.name} <ChevronRight size={14}/>
+                                   </div>
+                                 ))}
+                               </div>
+                             </div>
+                           )}
+                        </div>
                       )}
-                      {canDelete && (
-                        <button onClick={() => setTaskToDeleteId(task.id)} className="p-3 bg-rose-50 text-rose-400 rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-600 hover:text-white"><Trash2 size={18}/></button>
+                      {isOwner && (
+                        <button onClick={() => onDeleteTask(task.id)} className="p-3 bg-rose-50 text-rose-400 rounded-xl opacity-0 group-hover:opacity-100 hover:bg-rose-600 hover:text-white transition-all" title="Supprimer"><Trash2 size={18}/></button>
                       )}
                     </div>
                   </td>
@@ -389,7 +351,9 @@ const PlanningModule: React.FC<Props> = ({
             })}
           </tbody>
         </table>
-        {displayTasks.length === 0 && <div className="p-32 text-center"><AlertCircle className="mx-auto text-slate-200 mb-6" size={48}/><p className="text-slate-400 font-black text-[12px] uppercase tracking-widest">Aucune mission trouvée</p></div>}
+        {displayTasks.length === 0 && (
+          <div className="p-20 text-center text-slate-300 font-black uppercase text-[10px] tracking-widest italic">Aucune mission dans cet onglet</div>
+        )}
       </div>
     </div>
   );
