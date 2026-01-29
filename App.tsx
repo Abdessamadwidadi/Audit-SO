@@ -51,6 +51,7 @@ const App: React.FC = () => {
   const [editEntry, setEditEntry] = useState<TimeEntry | null>(null);
   const [showPinChange, setShowPinChange] = useState(false);
   const [deletingFolderId, setDeletingFolderId] = useState<string | null>(null);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [poleFilter, setPoleFilter] = useState<string>('all');
@@ -191,19 +192,22 @@ const App: React.FC = () => {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (!selectedEntryIds.size) return;
-    if (confirm(`Supprimer définitivement les ${selectedEntryIds.size} saisies sélectionnées ?`)) {
-      setIsRefreshing(true);
-      const idsToDelete = Array.from(selectedEntryIds).map(id => Number(id));
-      const { error } = await supabase.from('time_entries').delete().in('id', idsToDelete);
-      
-      if (error) {
-        showNotif('error', "Erreur lors de la suppression groupée");
-      } else {
-        showNotif('success', `${selectedEntryIds.size} saisies supprimées`);
-        fetchData();
-      }
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const performBulkDelete = async () => {
+    setIsBulkDeleteModalOpen(false);
+    setIsRefreshing(true);
+    const idsToDelete = Array.from(selectedEntryIds).map(id => Number(id));
+    const { error } = await supabase.from('time_entries').delete().in('id', idsToDelete);
+    
+    if (error) {
+      showNotif('error', "Erreur lors de la suppression groupée");
+    } else {
+      showNotif('success', `${selectedEntryIds.size} saisies supprimées`);
+      fetchData();
     }
   };
 
@@ -300,6 +304,16 @@ const App: React.FC = () => {
           onConfirm={handleDeleteFolderConfirm}
           onCancel={() => setDeletingFolderId(null)}
           confirmLabel="Confirmer la suppression"
+        />
+      )}
+
+      {isBulkDeleteModalOpen && (
+        <ConfirmModal 
+          title="Suppression groupée"
+          message={`Supprimer définitivement les ${selectedEntryIds.size} saisies sélectionnées ?`}
+          onConfirm={performBulkDelete}
+          onCancel={() => setIsBulkDeleteModalOpen(false)}
+          confirmLabel="Supprimer"
         />
       )}
 

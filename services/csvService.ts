@@ -37,7 +37,7 @@ export const exportToExcel = (filename: string, data: any[][]) => {
 
 /**
  * Format 1 : EXPORT SIMPLE (Analytique par Dossier)
- * Structure par bloc avec PÔLE ajouté.
+ * Structure par bloc avec PÔLE ajouté et DATE au format DD/MM/YYYY.
  */
 export const exportSimpleByFolder = (filename: string, entries: TimeEntry[], folders: Folder[], collaborators: Collaborator[]) => {
   const data: any[][] = [];
@@ -84,8 +84,12 @@ export const exportSimpleByFolder = (filename: string, entries: TimeEntry[], fol
       
       const exFormatted = isAudit ? `CAC${e.exercice}` : `EX${e.exercice}`;
       
+      // Formatage de la date en DD/MM/YYYY
+      const dateParts = e.date.split('-');
+      const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : e.date;
+
       data.push([
-        e.date, 
+        formattedDate, 
         exFormatted, 
         collabName, 
         e.description, 
@@ -113,7 +117,7 @@ export const exportSimpleByFolder = (filename: string, entries: TimeEntry[], fol
   });
 
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 30 }, { wch: 50 }, { wch: 10 }, { wch: 12 }];
+  ws['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 30 }, { wch: 50 }, { wch: 10 }, { wch: 12 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Export Analytique");
   XLSX.writeFile(wb, `${filename}.xlsx`);
