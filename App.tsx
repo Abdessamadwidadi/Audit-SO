@@ -6,12 +6,13 @@ import Dashboard from './components/Dashboard';
 import EntityModal from './components/EntityModal';
 import EntryEditModal from './components/EntryEditModal';
 import PinChangeModal from './components/PinChangeModal';
+import ConfirmModal from './components/ConfirmModal';
 import Logo from './components/Logo';
-import { exportGroupedByFolder, exportToExcel } from './services/csvService';
+import { exportSimpleByFolder, exportSummaryCabinet } from './services/csvService';
 import { 
   LayoutDashboard, Users, FolderOpen, LogOut, 
   PlusCircle, Loader2, Trash2, Table, Edit3, 
-  RefreshCw, FileSpreadsheet, Layers, ShieldCheck, UserCircle
+  RefreshCw, FileSpreadsheet, Layers, ShieldCheck, UserCircle, Search, CheckSquare, Square
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -49,12 +50,15 @@ const App: React.FC = () => {
   const [entityModal, setEntityModal] = useState<{type: 'collab' | 'folder', data?: any} | null>(null);
   const [editEntry, setEditEntry] = useState<TimeEntry | null>(null);
   const [showPinChange, setShowPinChange] = useState(false);
+  const [deletingFolderId, setDeletingFolderId] = useState<string | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [poleFilter, setPoleFilter] = useState<string>('all');
   const [exerciceFilter, setExerciceFilter] = useState<number>(0); 
   const [startDate, setStartDate] = useState("2024-01-01");
   const [endDate, setEndDate] = useState("2026-12-31");
+
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
 
   const supabase = useMemo(() => createClient(DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_KEY), []);
 
@@ -98,6 +102,7 @@ const App: React.FC = () => {
       })) || []);
       
       setIsDataLoaded(true);
+      setSelectedEntryIds(new Set());
     } catch (err) { 
       console.error("Fetch error:", err);
       showNotif('error', "Erreur de chargement"); 
@@ -113,7 +118,14 @@ const App: React.FC = () => {
   const filteredHistory = useMemo(() => {
     let list = entries.filter(e => {
       const matchCollab = isAdminOrManager ? true : String(e.collaboratorId) === String(currentUserId);
-      const matchPole = poleFilter === 'all' || e.service?.toLowerCase() === poleFilter.toLowerCase();
+      
+      // Règle PRUNAY/PRUNNAY = AUDIT
+      const nameUpper = (e.folderName || "").toUpperCase();
+      const isPrunay = nameUpper.includes("PRUNAY") || nameUpper.includes("PRUNNAY");
+      const isActuallyAudit = isPrunay || (e.service || "").toLowerCase() === 'audit';
+      const effectivePole = isActuallyAudit ? 'Audit' : 'Expertise';
+      
+      const matchPole = poleFilter === 'all' || effectivePole.toLowerCase() === poleFilter.toLowerCase();
       const matchEx = exerciceFilter === 0 || Number(e.exercice) === exerciceFilter;
       const matchDate = e.date >= startDate && e.date <= endDate;
       return matchCollab && matchPole && matchEx && matchDate;
@@ -124,31 +136,96 @@ const App: React.FC = () => {
       list = list.filter(e => (
         (e.folderName?.toLowerCase() || "").includes(s) || 
         (e.description?.toLowerCase() || "").includes(s) ||
-        (e.folderNumber?.toLowerCase() || "").includes(s)
+        (e.folderNumber?.toLowerCase() || "").includes(s) ||
+        (collaborators.find(c => String(c.id) === String(e.collaboratorId))?.name?.toLowerCase() || "").includes(s)
       ));
     }
     return list;
-  }, [entries, searchQuery, poleFilter, currentUserId, isAdminOrManager, startDate, endDate, exerciceFilter]);
+  }, [entries, searchQuery, poleFilter, currentUserId, isAdminOrManager, startDate, endDate, exerciceFilter, collaborators]);
 
-  const handleExportHistory = () => {
-    const data = [
-      ["DATE", "COLLABORATEUR", "N° DOSSIER", "LIBELLÉ DOSSIER", "TRAVAUX", "DURÉE (H)", "EXERCICE", "PÔLE"],
-      ...filteredHistory.map(e => [
-        formatDateFR(e.date),
-        collaborators.find(c => String(c.id) === String(e.collaboratorId))?.name || "Inconnu",
-        e.folderNumber,
-        e.folderName,
-        e.description,
-        e.duration,
-        e.exercice,
-        e.service
-      ])
-    ];
-    exportToExcel(`Export_Historique_${new Date().toISOString().split('T')[0]}`, data);
+  const filteredFoldersList = useMemo(() => {
+    let list = folders.filter(f => !f.isArchived);
+    if (poleFilter !== 'all') {
+      list = list.filter(f => {
+        const nameUpper = (f.name || "").toUpperCase();
+        const isPrunay = nameUpper.includes("PRUNAY") || nameUpper.includes("PRUNNAY");
+        const isActuallyAudit = isPrunay || (f.serviceType || "").toLowerCase() === 'audit';
+        const effectivePole = isActuallyAudit ? 'Audit' : 'Expertise';
+        return effectivePole.toLowerCase() === poleFilter.toLowerCase();
+      });
+    }
+    if (searchQuery.trim()) {
+      const s = searchQuery.toLowerCase();
+      list = list.filter(f => 
+        (f.name?.toLowerCase() || "").includes(s) || 
+        (f.number?.toLowerCase() || "").includes(s)
+      );
+    }
+    return list;
+  }, [folders, poleFilter, searchQuery]);
+
+  const filteredCollaboratorsList = useMemo(() => {
+    let list = collaborators;
+    if (poleFilter !== 'all') {
+      list = list.filter(c => c.department?.toLowerCase() === poleFilter.toLowerCase());
+    }
+    if (searchQuery.trim()) {
+      const s = searchQuery.toLowerCase();
+      list = list.filter(c => (c.name?.toLowerCase() || "").includes(s));
+    }
+    return list;
+  }, [collaborators, poleFilter, searchQuery]);
+
+  const toggleEntrySelection = (id: string) => {
+    const next = new Set(selectedEntryIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedEntryIds(next);
   };
 
-  const handleGroupedExport = () => {
-    exportGroupedByFolder(`Export_Groupe_Dossiers_${new Date().toISOString().split('T')[0]}`, filteredHistory, folders, collaborators);
+  const toggleSelectAll = () => {
+    if (selectedEntryIds.size === filteredHistory.length) {
+      setSelectedEntryIds(new Set());
+    } else {
+      setSelectedEntryIds(new Set(filteredHistory.map(e => e.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectedEntryIds.size) return;
+    if (confirm(`Supprimer définitivement les ${selectedEntryIds.size} saisies sélectionnées ?`)) {
+      setIsRefreshing(true);
+      const idsToDelete = Array.from(selectedEntryIds).map(id => Number(id));
+      const { error } = await supabase.from('time_entries').delete().in('id', idsToDelete);
+      
+      if (error) {
+        showNotif('error', "Erreur lors de la suppression groupée");
+      } else {
+        showNotif('success', `${selectedEntryIds.size} saisies supprimées`);
+        fetchData();
+      }
+    }
+  };
+
+  const handleDeleteFolderConfirm = async () => {
+    if (!deletingFolderId) return;
+    setIsRefreshing(true);
+    const { error } = await supabase.from('folders').delete().eq('id', Number(deletingFolderId));
+    if (error) {
+      showNotif('error', "Erreur lors de la suppression du dossier");
+    } else {
+      showNotif('success', "Dossier et temps associés supprimés");
+      fetchData();
+    }
+    setDeletingFolderId(null);
+  };
+
+  const handleExportHistorySimple = () => {
+    exportSimpleByFolder(`Export_Simple_Analytique_${new Date().toISOString().split('T')[0]}`, filteredHistory, folders, collaborators);
+  };
+
+  const handleExportGroupedCabinet = () => {
+    exportSummaryCabinet(`Export_Regroupe_Portefeuille_${new Date().toISOString().split('T')[0]}`, filteredHistory, folders, collaborators);
   };
 
   if (!isDataLoaded) return <div className="min-h-screen bg-[#020617] flex items-center justify-center text-white"><Loader2 className="animate-spin mr-3" size={40}/> Chargement...</div>;
@@ -215,11 +292,21 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex bg-[#f8fafc] text-[#000000]">
       {notif && (<div className={`fixed top-8 right-8 z-[1000] px-8 py-4 rounded-xl text-white font-black text-[10px] uppercase shadow-2xl ${notif.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>{notif.msg}</div>)}
+      
+      {deletingFolderId && (
+        <ConfirmModal 
+          title="Supprimer ce dossier ?"
+          message="Attention, supprimer ce dossier effacera toutes ses données. Utilisez l'Export Simple avant de confirmer."
+          onConfirm={handleDeleteFolderConfirm}
+          onCancel={() => setDeletingFolderId(null)}
+          confirmLabel="Confirmer la suppression"
+        />
+      )}
+
       {entityModal && <EntityModal type={entityModal.type} initialData={entityModal.data} currentUser={currentUser} onSave={async (data) => {
         const { id, ...rest } = data;
         const table = entityModal.type === 'collab' ? 'collaborators' : 'folders';
         
-        // Mappage précis vers les colonnes Supabase (snake_case)
         const payload = entityModal.type === 'collab' ? {
           name: data.name,
           department: data.department,
@@ -258,7 +345,7 @@ const App: React.FC = () => {
             folder_number: folder?.number,
             service: folder?.serviceType,
             exercice: updated.exercice
-          }).eq('id', updated.id);
+          }).eq('id', Number(updated.id));
           fetchData(); setEditEntry(null); showNotif('success', 'Saisie modifiée');
         }} />
       )}
@@ -312,13 +399,29 @@ const App: React.FC = () => {
                 </div>
               </div>
 
+              {(view === 'history' || view === 'dashboard' || view === 'folders' || view === 'collabs') && (
+                <div className="flex flex-col gap-1 flex-grow">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Recherche</span>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                    <input 
+                      type="text" 
+                      placeholder="Rechercher..." 
+                      className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
               {(view === 'history' || view === 'dashboard') && (
                 <>
                   <div className="flex flex-col gap-1">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Exercice</span>
                     <select className="p-2.5 border border-slate-200 rounded-xl font-black text-indigo-600 text-[10px] outline-none shadow-sm" value={exerciceFilter} onChange={e => setExerciceFilter(parseInt(e.target.value))}>
                       <option value={0}>Tous</option>
-                      {EXERCICES.map(ex => <option key={ex} value={ex}>EXERCICE {ex}</option>)}
+                      {EXERCICES.map(ex => <option key={ex} value={ex}>{ex}</option>)}
                     </select>
                   </div>
                   <div className="flex flex-col gap-1">
@@ -336,40 +439,65 @@ const App: React.FC = () => {
 
           {view === 'history' && (
             <div className="space-y-4">
-              <div className="flex justify-end gap-3">
-                <button onClick={handleExportHistory} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg transition-all">
-                  <FileSpreadsheet size={16}/> Exporter Excel
-                </button>
-                <button onClick={handleGroupedExport} className="flex items-center gap-2 px-6 py-3 bg-[#0056b3] text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-all">
-                  <Layers size={16}/> Export Groupé (Dossiers)
-                </button>
+              <div className="flex justify-between items-center">
+                <div className="flex gap-2">
+                  {selectedEntryIds.size > 0 && (
+                    <button onClick={handleBulkDelete} className="flex items-center gap-2 px-6 py-3 bg-rose-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-rose-700 transition-all animate-in slide-in-from-left">
+                      <Trash2 size={16}/> Supprimer la sélection ({selectedEntryIds.size})
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={handleExportHistorySimple} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg transition-all">
+                    <FileSpreadsheet size={16}/> Export Simple (Analytique)
+                  </button>
+                  <button onClick={handleExportGroupedCabinet} className="flex items-center gap-2 px-6 py-3 bg-[#0056b3] text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-all">
+                    <Layers size={16}/> Export Regroupe (Portefeuille)
+                  </button>
+                </div>
               </div>
               <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl overflow-hidden">
                 <table className="w-full text-left">
                   <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b">
-                    <tr><th className="p-6">Date</th><th className="p-6">Collaborateur</th><th className="p-6">Dossier</th><th className="p-6">Travaux</th><th className="p-6 text-center">H</th><th className="p-6 text-right">Actions</th></tr>
+                    <tr>
+                      <th className="p-6 w-10">
+                        <button onClick={toggleSelectAll} className="text-white hover:text-indigo-400 transition-colors">
+                          {selectedEntryIds.size === filteredHistory.length && filteredHistory.length > 0 ? <CheckSquare size={18}/> : <Square size={18}/>}
+                        </button>
+                      </th>
+                      <th className="p-6">Date</th><th className="p-6">Collaborateur</th><th className="p-6">Dossier</th><th className="p-6">Travaux</th><th className="p-6 text-center">H</th><th className="p-6 text-right">Actions</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredHistory.map(e => (
-                      <tr key={e.id} className="text-xs hover:bg-slate-50 text-[#000000] font-bold">
-                        <td className="p-6 whitespace-nowrap">{formatDateFR(e.date)}</td>
-                        <td className="p-6 uppercase whitespace-nowrap">{collaborators.find(c => String(c.id) === String(e.collaboratorId))?.name}</td>
-                        <td className="p-6">
-                          <span className={`text-[9px] font-black block ${e.service?.toLowerCase() === 'audit' ? 'text-[#0056b3]' : 'text-orange-500'}`}>{e.folderNumber}</span>
-                          <span className="uppercase text-[10px]">{e.folderName}</span>
-                        </td>
-                        <td className="p-6 text-slate-600 italic text-[11px] max-w-[200px] truncate">{e.description}</td>
-                        <td className="p-6 text-center text-[#000000] text-base">{e.duration}h</td>
-                        <td className="p-6 text-right whitespace-nowrap">
-                          <button onClick={() => setEditEntry(e)} className="p-2 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all mr-2"><Edit3 size={16}/></button>
-                          <button onClick={async () => { if(confirm("Supprimer ?")) { await supabase.from('time_entries').delete().eq('id', e.id); fetchData(); } }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={16}/></button>
-                        </td>
-                      </tr>
-                    ))}
+                    {filteredHistory.map(e => {
+                      const nameUpper = (e.folderName || "").toUpperCase();
+                      const isActuallyAudit = nameUpper.includes("PRUNAY") || nameUpper.includes("PRUNNAY") || (e.service || "").toLowerCase() === 'audit';
+                      return (
+                        <tr key={e.id} className={`text-xs hover:bg-slate-50 transition-all ${selectedEntryIds.has(e.id) ? 'bg-indigo-50/50' : ''} text-[#000000] font-bold`}>
+                          <td className="p-6">
+                            <button onClick={() => toggleEntrySelection(e.id)} className={`${selectedEntryIds.has(e.id) ? 'text-indigo-600' : 'text-slate-300'}`}>
+                              {selectedEntryIds.has(e.id) ? <CheckSquare size={18}/> : <Square size={18}/>}
+                            </button>
+                          </td>
+                          <td className="p-6 whitespace-nowrap" onClick={() => toggleEntrySelection(e.id)}>{formatDateFR(e.date)}</td>
+                          <td className="p-6 uppercase whitespace-nowrap">{collaborators.find(c => String(c.id) === String(e.collaboratorId))?.name}</td>
+                          <td className="p-6">
+                            <span className={`text-[9px] font-black block ${isActuallyAudit ? 'text-[#0056b3]' : 'text-orange-500'}`}>{e.folderNumber}</span>
+                            <span className="uppercase text-[10px]">{e.folderName}</span>
+                          </td>
+                          <td className="p-6 text-slate-600 italic text-[11px] max-w-[200px] truncate">{e.description}</td>
+                          <td className="p-6 text-center text-[#000000] text-base">{e.duration}h</td>
+                          <td className="p-6 text-right whitespace-nowrap">
+                            <button onClick={() => setEditEntry(e)} className="p-2 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all mr-2"><Edit3 size={16}/></button>
+                            <button onClick={async () => { if(confirm("Supprimer cette saisie ?")) { await supabase.from('time_entries').delete().eq('id', Number(e.id)); fetchData(); } }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={16}/></button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {filteredHistory.length === 0 && (
-                  <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucune saisie trouvée pour cette période</div>
+                  <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucune saisie trouvée</div>
                 )}
               </div>
             </div>
@@ -380,22 +508,28 @@ const App: React.FC = () => {
                 <table className="w-full text-left">
                   <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b"><tr><th className="p-6">Numéro</th><th className="p-6">Libellé du Dossier</th><th className="p-6 text-center">Pôle</th><th className="p-6 text-right">Actions</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
-                    {folders
-                      .filter(f => !f.isArchived)
-                      .filter(f => poleFilter === 'all' || f.serviceType?.toLowerCase() === poleFilter.toLowerCase())
-                      .map(f => (
-                        <tr key={f.id} className="hover:bg-slate-50 text-[#000000] font-bold">
-                          <td className={`p-6 font-black ${f.serviceType?.toLowerCase() === 'audit' ? 'text-[#0056b3]' : 'text-orange-500'}`}>{f.number}</td>
-                          <td className="p-6 uppercase">{f.name}</td>
-                          <td className="p-6 text-center"><span className={`px-2 py-1 rounded text-[8px] font-black text-white ${f.serviceType?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{f.serviceType}</span></td>
-                          <td className="p-6 text-right">
-                            <button onClick={() => setEntityModal({type: 'folder', data: f})} className="p-3 text-slate-400 hover:text-indigo-600 transition-all"><Edit3 size={18}/></button>
-                            <button onClick={async () => { if(confirm("Archiver ?")) { await supabase.from('folders').update({is_archived: true}).eq('id', Number(f.id)); fetchData(); } }} className="p-3 text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={18}/></button>
-                          </td>
-                        </tr>
-                      ))}
+                    {filteredFoldersList.map(f => {
+                        const nameUpper = (f.name || "").toUpperCase();
+                        const isPrunay = nameUpper.includes("PRUNAY") || nameUpper.includes("PRUNNAY");
+                        const isActuallyAudit = isPrunay || (f.serviceType || "").toLowerCase() === 'audit';
+                        const effectivePole = isActuallyAudit ? 'Audit' : 'Expertise';
+                        return (
+                          <tr key={f.id} className="hover:bg-slate-50 text-[#000000] font-bold">
+                            <td className={`p-6 font-black ${effectivePole?.toLowerCase() === 'audit' ? 'text-[#0056b3]' : 'text-orange-500'}`}>{f.number}</td>
+                            <td className="p-6 uppercase">{f.name}</td>
+                            <td className="p-6 text-center"><span className={`px-2 py-1 rounded text-[8px] font-black text-white ${effectivePole?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{effectivePole}</span></td>
+                            <td className="p-6 text-right">
+                              <button onClick={() => setEntityModal({type: 'folder', data: f})} className="p-3 text-slate-400 hover:text-indigo-600 transition-all"><Edit3 size={18}/></button>
+                              <button onClick={() => setDeletingFolderId(f.id)} className="p-3 text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={18}/></button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                   </tbody>
                 </table>
+                {filteredFoldersList.length === 0 && (
+                  <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucun dossier trouvé</div>
+                )}
               </div>
           )}
 
@@ -420,9 +554,7 @@ const App: React.FC = () => {
                <table className="w-full text-left">
                   <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b"><tr><th className="p-6">Nom</th><th className="p-6">Pôle</th><th className="p-6">Rôle</th><th className="p-6 text-right w-20">Actions</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">
-                    {collaborators
-                      .filter(c => poleFilter === 'all' || c.department?.toLowerCase() === poleFilter.toLowerCase())
-                      .map(c => (
+                    {filteredCollaboratorsList.map(c => (
                         <tr key={c.id} className={`hover:bg-slate-50 text-[#000000] font-bold ${!c.isActive ? 'opacity-50 grayscale' : ''}`}>
                           <td className="p-6 uppercase">{c.name}</td>
                           <td className="p-6"><span className={`px-3 py-1 rounded-full text-[8px] font-black text-white ${c.department?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{c.department}</span></td>
@@ -432,6 +564,9 @@ const App: React.FC = () => {
                       ))}
                   </tbody>
                </table>
+               {filteredCollaboratorsList.length === 0 && (
+                  <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucun collaborateur trouvé</div>
+                )}
             </div>
           )}
         </div>
