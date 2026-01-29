@@ -12,7 +12,7 @@ import { exportSimpleByFolder, exportSummaryCabinet } from './services/csvServic
 import { 
   LayoutDashboard, Users, FolderOpen, LogOut, 
   PlusCircle, Loader2, Trash2, Table, Edit3, 
-  RefreshCw, FileSpreadsheet, Layers, ShieldCheck, UserCircle, Search, CheckSquare, Square
+  RefreshCw, FileSpreadsheet, Layers, ShieldCheck, UserCircle, Search, CheckSquare, Square, ArrowUpDown
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -24,7 +24,6 @@ const normalizeDate = (dateStr: any): string => {
   if (!dateStr) return new Date().toISOString().split('T')[0];
   const s = String(dateStr).trim();
   
-  // Gérer le format DD/MM/YYYY (souvent utilisé lors des imports manuels Excel/CSV dans Supabase)
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
     const [d, m, y] = s.split('/');
     return `${y}-${m}-${d}`;
@@ -65,6 +64,7 @@ const App: React.FC = () => {
   const [exerciceFilter, setExerciceFilter] = useState<number>(0); 
   const [startDate, setStartDate] = useState("2024-01-01");
   const [endDate, setEndDate] = useState("2026-12-31");
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
 
@@ -134,10 +134,7 @@ const App: React.FC = () => {
 
   const filteredHistory = useMemo(() => {
     let list = entries.filter(e => {
-      // Pour les admins, on montre tout, y compris les imports sans ID de collaborateur
       const matchCollab = isAdminOrManager ? true : String(e.collaboratorId) === String(currentUserId);
-      
-      // Règle PRUNAY/PRUNNAY = AUDIT
       const nameUpper = (e.folderName || "").toUpperCase();
       const isPrunay = nameUpper.includes("PRUNAY") || nameUpper.includes("PRUNNAY");
       const isActuallyAudit = isPrunay || (e.service || "").toLowerCase() === 'audit';
@@ -158,8 +155,15 @@ const App: React.FC = () => {
         (collaborators.find(c => String(c.id) === String(e.collaboratorId))?.name?.toLowerCase() || "").includes(s)
       ));
     }
-    return list;
-  }, [entries, searchQuery, poleFilter, currentUserId, isAdminOrManager, startDate, endDate, exerciceFilter, collaborators]);
+
+    return list.sort((a, b) => {
+      const dateCompare = sortOrder === 'desc' 
+        ? b.date.localeCompare(a.date) 
+        : a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      return sortOrder === 'desc' ? Number(b.id) - Number(a.id) : Number(a.id) - Number(b.id);
+    });
+  }, [entries, searchQuery, poleFilter, currentUserId, isAdminOrManager, startDate, endDate, exerciceFilter, collaborators, sortOrder]);
 
   const filteredFoldersList = useMemo(() => {
     let list = folders.filter(f => !f.isArchived);
@@ -448,6 +452,13 @@ const App: React.FC = () => {
 
               {(view === 'history' || view === 'dashboard') && (
                 <>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Tri Chronologique</span>
+                    <select className="p-2.5 border border-slate-200 rounded-xl font-black text-indigo-600 text-[10px] outline-none shadow-sm" value={sortOrder} onChange={e => setSortOrder(e.target.value as 'asc' | 'desc')}>
+                      <option value="desc">Plus récent au plus ancien</option>
+                      <option value="asc">Plus ancien au plus récent</option>
+                    </select>
+                  </div>
                   <div className="flex flex-col gap-1">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Exercice</span>
                     <select className="p-2.5 border border-slate-200 rounded-xl font-black text-indigo-600 text-[10px] outline-none shadow-sm" value={exerciceFilter} onChange={e => setExerciceFilter(parseInt(e.target.value))}>
