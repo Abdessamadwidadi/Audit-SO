@@ -132,6 +132,13 @@ const App: React.FC = () => {
   const currentUser = useMemo(() => collaborators.find(c => String(c.id) === String(currentUserId)), [collaborators, currentUserId]);
   const isAdminOrManager = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MANAGER;
 
+  // Verrouillage du pôle pour les collaborateurs
+  useEffect(() => {
+    if (currentUser && !isAdminOrManager) {
+      setPoleFilter(currentUser.department);
+    }
+  }, [currentUser, isAdminOrManager]);
+
   const filteredHistory = useMemo(() => {
     let list = entries.filter(e => {
       const matchCollab = isAdminOrManager ? true : String(e.collaboratorId) === String(currentUserId);
@@ -395,11 +402,11 @@ const App: React.FC = () => {
       <aside className="w-80 bg-[#0f172a] text-white p-10 flex flex-col shrink-0 shadow-2xl z-50">
         <div className="mb-12 flex justify-center"><Logo variant="both" size={42} showText={false} /></div>
         <nav className="space-y-3 flex-grow">
-          {[{v: 'log', i: <PlusCircle size={18}/>, l: 'Saisie'}, {v: 'history', i: <Table size={18}/>, l: 'Historique'}].map(m => (
+          {[{v: 'log', i: <PlusCircle size={18}/>, l: 'Saisie'}, {v: 'dashboard', i: <LayoutDashboard size={18}/>, l: 'Mon Dashboard'}, {v: 'history', i: <Table size={18}/>, l: 'Historique'}].map(m => (
             <button key={m.v} onClick={() => setView(m.v as any)} className={`w-full flex items-center gap-4 px-8 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${view === m.v ? 'bg-indigo-600' : 'hover:bg-slate-800 text-slate-400'}`}>{m.i} {m.l}</button>
           ))}
           {isAdminOrManager && <div className="pt-10 border-t border-slate-800 mt-6 space-y-3">
-            {[{v: 'dashboard', i: <LayoutDashboard size={18}/>, l: 'Dashboard'}, {v: 'folders', i: <FolderOpen size={18}/>, l: 'Dossiers'}, {v: 'collabs', i: <Users size={18}/>, l: 'Équipe'}].map(m => (
+            {[{v: 'dashboard', i: <LayoutDashboard size={18}/>, l: 'Dashboard Manager'}, {v: 'folders', i: <FolderOpen size={18}/>, l: 'Dossiers'}, {v: 'collabs', i: <Users size={18}/>, l: 'Équipe'}].map(m => (
               <button key={m.v} onClick={() => setView(m.v as any)} className={`w-full flex items-center gap-4 px-8 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${view === m.v ? 'bg-indigo-600' : 'hover:bg-slate-800 text-slate-400'}`}>{m.i} {m.l}</button>
             ))}
           </div>}
@@ -425,14 +432,21 @@ const App: React.FC = () => {
         <div className="space-y-10">
           {(view === 'history' || view === 'dashboard' || view === 'folders' || view === 'collabs') && (
             <div className="flex flex-wrap gap-4 items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <div className="flex flex-col gap-1">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Filtre Pôle</span>
-                <div className="flex bg-white p-1 rounded-xl border border-slate-200">
-                  {['all', 'Audit', 'Expertise'].map(p => (
-                    <button key={p} onClick={() => setPoleFilter(p)} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${poleFilter === p ? (p === 'Audit' ? 'bg-[#0056b3] text-white shadow-md' : p === 'Expertise' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-900 text-white shadow-md') : 'text-slate-400 hover:text-slate-600'}`}>{p === 'all' ? 'Tous' : p}</button>
-                  ))}
+              {/* Filtre Pôle verrouillé pour les collaborateurs */}
+              {(isAdminOrManager || view === 'history') && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Filtre Pôle</span>
+                  <div className="flex bg-white p-1 rounded-xl border border-slate-200">
+                    {isAdminOrManager ? (
+                      ['all', 'Audit', 'Expertise'].map(p => (
+                        <button key={p} onClick={() => setPoleFilter(p)} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${poleFilter === p ? (p === 'Audit' ? 'bg-[#0056b3] text-white shadow-md' : p === 'Expertise' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-900 text-white shadow-md') : 'text-slate-400 hover:text-slate-600'}`}>{p === 'all' ? 'Tous' : p}</button>
+                      ))
+                    ) : (
+                      <button className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${currentUser.department === 'Audit' ? 'bg-[#0056b3] text-white shadow-md' : 'bg-orange-500 text-white shadow-md'}`}>{currentUser.department}</button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {(view === 'history' || view === 'dashboard' || view === 'folders' || view === 'collabs') && (
                 <div className="flex flex-col gap-1 flex-grow">
@@ -452,13 +466,16 @@ const App: React.FC = () => {
 
               {(view === 'history' || view === 'dashboard') && (
                 <>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Tri Chronologique</span>
-                    <select className="p-2.5 border border-slate-200 rounded-xl font-black text-indigo-600 text-[10px] outline-none shadow-sm" value={sortOrder} onChange={e => setSortOrder(e.target.value as 'asc' | 'desc')}>
-                      <option value="desc">Plus récent au plus ancien</option>
-                      <option value="asc">Plus ancien au plus récent</option>
-                    </select>
-                  </div>
+                  {/* Pas de tri chronologique sur le Dashboard */}
+                  {view === 'history' && (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Tri Chronologique</span>
+                      <select className="p-2.5 border border-slate-200 rounded-xl font-black text-indigo-600 text-[10px] outline-none shadow-sm" value={sortOrder} onChange={e => setSortOrder(e.target.value as 'asc' | 'desc')}>
+                        <option value="desc">Plus récent au plus ancien</option>
+                        <option value="asc">Plus ancien au plus récent</option>
+                      </select>
+                    </div>
+                  )}
                   <div className="flex flex-col gap-1">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Exercice</span>
                     <select className="p-2.5 border border-slate-200 rounded-xl font-black text-indigo-600 text-[10px] outline-none shadow-sm" value={exerciceFilter} onChange={e => setExerciceFilter(parseInt(e.target.value))}>
@@ -466,14 +483,17 @@ const App: React.FC = () => {
                       {EXERCICES.map(ex => <option key={ex} value={ex}>{ex}</option>)}
                     </select>
                   </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Période (De → À)</span>
-                    <div className="flex items-center gap-2">
-                      <input type="date" className="p-2 border border-slate-200 rounded-xl font-bold text-xs" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                      <span className="text-slate-300">→</span>
-                      <input type="date" className="p-2 border border-slate-200 rounded-xl font-bold text-xs" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                  {/* Pas de période date sur le Dashboard */}
+                  {view === 'history' && (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Période (De → À)</span>
+                      <div className="flex items-center gap-2">
+                        <input type="date" className="p-2 border border-slate-200 rounded-xl font-bold text-xs" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                        <span className="text-slate-300">→</span>
+                        <input type="date" className="p-2 border border-slate-200 rounded-xl font-bold text-xs" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </>
               )}
             </div>
@@ -575,7 +595,7 @@ const App: React.FC = () => {
               </div>
           )}
 
-          {view === 'dashboard' && <Dashboard entries={entries} folders={folders} attendance={[]} collaborators={collaborators} poleFilter={poleFilter} startDate={startDate} endDate={endDate} exerciceFilter={exerciceFilter} />}
+          {view === 'dashboard' && <Dashboard entries={entries} folders={folders} attendance={[]} collaborators={collaborators} poleFilter={poleFilter} startDate={startDate} endDate={endDate} exerciceFilter={exerciceFilter} currentUser={currentUser} />}
           {view === 'log' && <TimeEntryForm currentUser={currentUser!} folders={folders} existingEntries={entries} onAddEntry={async d => { 
             const folder = folders.find(fl => String(fl.id) === String(d.folderId));
             await supabase.from('time_entries').insert([{ 

@@ -37,12 +37,10 @@ export const exportToExcel = (filename: string, data: any[][]) => {
 
 /**
  * Format 1 : EXPORT SIMPLE (Analytique par Dossier)
- * Structure par bloc avec PÔLE ajouté et DATE au format DD/MM/YYYY.
  */
 export const exportSimpleByFolder = (filename: string, entries: TimeEntry[], folders: Folder[], collaborators: Collaborator[]) => {
   const data: any[][] = [];
 
-  // En-tête global du fichier pour identification
   data.push(["EXPORT ANALYTIQUE DES TEMPS - CABINET MANAGEMENT SO"]);
   data.push([]);
 
@@ -58,60 +56,38 @@ export const exportSimpleByFolder = (filename: string, entries: TimeEntry[], fol
     const folder = folders.find(f => String(f.id) === String(folderId));
     const folderEntries = folderGroups.get(folderId)!;
     
-    // Règle PRUNAY/PRUNNAY = AUDIT (insensible casse et double N)
-    const folderNameUpper = (folder?.name || "").toUpperCase();
-    const isPrunay = folderNameUpper.includes("PRUNAY") || folderNameUpper.includes("PRUNNAY");
-    const isAudit = isPrunay || folder?.serviceType?.toLowerCase() === 'audit';
+    // Strict service check based on folder definition
+    const serviceFromFolder = folder?.serviceType;
+    const isAudit = (serviceFromFolder || folderEntries[0]?.service || "").toLowerCase() === 'audit';
     const poleLabel = isAudit ? "AUDIT" : "EXPERTISE";
 
-    // 1. En-tête de Bloc (PÔLE | N° DOSSIER | NOM DOSSIER)
-    data.push([poleLabel, folder?.number || "", folder?.name || "Sans nom", "", "", ""]);
-    
-    // 2. En-tête des colonnes détail
+    data.push([poleLabel, folder?.number || folderEntries[0]?.folderNumber || "", folder?.name || folderEntries[0]?.folderName || "Sans nom", "", "", ""]);
     data.push(["DATE", "EXERCICE", "COLLABORATEUR", "DESCRIPTION", "DURÉE (H)", "pourcentage"]);
 
     const collabSummary = new Map<string, number>();
-    const sortedEntries = [...folderEntries].sort((a, b) => a.date.localeCompare(b.date));
+    // TRI : Du plus récent au plus ancien (décroissant)
+    const sortedEntries = [...folderEntries].sort((a, b) => b.date.localeCompare(a.date));
     
-    // Détail des entrées
     sortedEntries.forEach(e => {
       const collab = collaborators.find(c => String(c.id) === String(e.collaboratorId));
       let collabName = collab?.name || "Inconnu";
-      
-      if (isAudit && !collabName.includes("- CAC")) {
-        collabName += " - CAC";
-      }
-      
+      // Uniformité : pas de suffixe - CAC
       const exFormatted = isAudit ? `CAC${e.exercice}` : `EX${e.exercice}`;
-      
-      // Formatage de la date en DD/MM/YYYY
       const dateParts = e.date.split('-');
       const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : e.date;
 
-      data.push([
-        formattedDate, 
-        exFormatted, 
-        collabName, 
-        e.description, 
-        e.duration,
-        "" 
-      ]);
-
+      data.push([formattedDate, exFormatted, collabName, e.description, e.duration, ""]);
       collabSummary.set(collabName, (collabSummary.get(collabName) || 0) + e.duration);
     });
 
-    // 3. Synthèse par Collaborateur
     data.push([]); 
     data.push(["", "SYNTHÈSE PAR COLLABORATEUR", "", "", "", ""]);
-    
     const folderTotal = Array.from(collabSummary.values()).reduce((a, b) => a + b, 0);
-
     Array.from(collabSummary.entries()).forEach(([name, total]) => {
       const percent = folderTotal > 0 ? Math.round((total / folderTotal) * 1000) / 10 : 0;
       data.push(["", "", name, "heures", total, `${percent}%`]);
     });
 
-    // 4. Espacement
     data.push([]);
     data.push([]);
   });
@@ -125,71 +101,66 @@ export const exportSimpleByFolder = (filename: string, entries: TimeEntry[], fol
 
 /**
  * Format 2 : EXPORT REGROUPÉ (Synthèse Portefeuille)
- * PÔLE | N° DOSSIER | NOM DOSSIER | COLLABORATEUR | EXERCICE | HEURES
  */
 export const exportSummaryCabinet = (filename: string, entries: TimeEntry[], folders: Folder[], collaborators: Collaborator[]) => {
   const data: any[][] = [];
-  
-  // En-tête global du fichier
   data.push(["SYNTHÈSE PORTEFEUILLE CABINET - MANAGEMENT SO"]);
   data.push([]);
-  
-  // Ligne d'en-tête du tableau
   data.push(["PÔLE", "N° DOSSIER", "NOM DOSSIER", "COLLABORATEUR", "EXERCICE", "HEURES"]);
 
-  // Tri par pôle (Audit et Prunay d'abord)
-  const sortedFolders = [...folders].sort((a, b) => {
-    const nameA = (a.name || "").toUpperCase();
-    const nameB = (b.name || "").toUpperCase();
-    const isAAudit = a.serviceType === ServiceType.AUDIT || nameA.includes("PRUNAY") || nameA.includes("PRUNNAY");
-    const isBAudit = b.serviceType === ServiceType.AUDIT || nameB.includes("PRUNAY") || nameB.includes("PRUNNAY");
-    if (isAAudit && !isBAudit) return -1;
-    if (!isAAudit && isBAudit) return 1;
-    return (a.number || "").localeCompare(b.number || "");
+  // Groupement robuste par identité textuelle du dossier
+  const entriesByIdentity = new Map<string, TimeEntry[]>();
+  entries.forEach(e => {
+    const folder = folders.find(f => String(f.id) === String(e.folderId));
+    const num = folder?.number || e.folderNumber || "-";
+    const name = folder?.name || e.folderName || "Inconnu";
+    const key = `${num}|${name}`;
+    const group = entriesByIdentity.get(key) || [];
+    group.push(e);
+    entriesByIdentity.set(key, group);
   });
 
-  sortedFolders.forEach(folder => {
-    const folderEntries = entries.filter(e => String(e.folderId) === String(folder.id));
-    if (folderEntries.length === 0) return;
+  // Tri des dossiers : Audit d'abord, puis par numéro
+  const sortedKeys = Array.from(entriesByIdentity.keys()).sort((keyA, keyB) => {
+    const entriesA = entriesByIdentity.get(keyA)!;
+    const entriesB = entriesByIdentity.get(keyB)!;
+    const folderA = folders.find(f => String(f.id) === String(entriesA[0].folderId));
+    const folderB = folders.find(f => String(f.id) === String(entriesB[0].folderId));
+    
+    const isAAudit = (folderA?.serviceType || entriesA[0].service || "").toLowerCase() === 'audit';
+    const isBAudit = (folderB?.serviceType || entriesB[0].service || "").toLowerCase() === 'audit';
 
-    // Règle PRUNAY = AUDIT
-    const nameUpper = (folder.name || "").toUpperCase();
-    const isAudit = folder.serviceType === ServiceType.AUDIT || nameUpper.includes("PRUNAY") || nameUpper.includes("PRUNNAY");
+    if (isAAudit && !isBAudit) return -1;
+    if (!isAAudit && isBAudit) return 1;
+    return keyA.split('|')[0].localeCompare(keyB.split('|')[0]);
+  });
+
+  sortedKeys.forEach(key => {
+    const folderEntries = entriesByIdentity.get(key)!;
+    const [folderNumber, folderName] = key.split('|');
+    const folderObj = folders.find(f => String(f.id) === String(folderEntries[0].folderId));
+
+    const isAudit = (folderObj?.serviceType || folderEntries[0].service || "").toLowerCase() === 'audit';
     const poleLabel = isAudit ? "AUDIT" : "EXPERTISE";
     
     const totalHours = folderEntries.reduce((acc, e) => acc + e.duration, 0);
 
-    // 1. Ligne de synthèse dossier (TOTAL)
-    data.push([
-      poleLabel,
-      folder.number,
-      `${folder.name} (TOTAL: ${totalHours}h)`,
-      "-",
-      "-",
-      totalHours
-    ]);
+    // Ligne de synthèse dossier
+    data.push([poleLabel, folderNumber, `${folderName} (TOTAL: ${totalHours}h)`, "-", "-", totalHours]);
 
-    // 2. Groupement par collaborateur et exercice
+    // Groupement par collaborateur et exercice
     const summaryMap = new Map<string, number>(); 
     folderEntries.forEach(e => {
       const collab = collaborators.find(c => String(c.id) === String(e.collaboratorId));
       let cName = collab?.name || "Inconnu";
-      if (isAudit && !cName.includes("- CAC")) cName += " - CAC";
-      
-      const key = `${cName}|${e.exercice}`;
-      summaryMap.set(key, (summaryMap.get(key) || 0) + e.duration);
+      // Uniformité : pas de suffixe - CAC
+      const groupKey = `${cName}|${e.exercice}`;
+      summaryMap.set(groupKey, (summaryMap.get(groupKey) || 0) + e.duration);
     });
 
-    Array.from(summaryMap.entries()).forEach(([key, hours]) => {
-      const [collabName, exercice] = key.split('|');
-      data.push([
-        poleLabel,
-        folder.number,
-        folder.name,
-        collabName,
-        exercice,
-        hours
-      ]);
+    Array.from(summaryMap.entries()).forEach(([groupKey, hours]) => {
+      const [collabName, exercice] = groupKey.split('|');
+      data.push([poleLabel, folderNumber, folderName, collabName, exercice, hours]);
     });
   });
 
