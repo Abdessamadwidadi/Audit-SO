@@ -12,7 +12,7 @@ import { exportSimpleByFolder, exportSummaryCabinet } from './services/csvServic
 import { 
   LayoutDashboard, Users, FolderOpen, LogOut, 
   PlusCircle, Loader2, Trash2, Table, Edit3, 
-  RefreshCw, FileSpreadsheet, Layers, ShieldCheck, UserCircle, Search, CheckSquare, Square, Sparkles
+  RefreshCw, FileSpreadsheet, Layers, ShieldCheck, UserCircle, Search, CheckSquare, Square, Sparkles, Menu, X as XIcon
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -45,6 +45,7 @@ const App: React.FC = () => {
   const [loginStep, setLoginStep] = useState<{collab: Collaborator} | null>(null);
   const [pinInput, setPinInput] = useState('');
   const pinInputRef = useRef<HTMLInputElement>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
@@ -132,7 +133,6 @@ const App: React.FC = () => {
   const currentUser = useMemo(() => collaborators.find(c => String(c.id) === String(currentUserId)), [collaborators, currentUserId]);
   const isAdminOrManager = currentUser?.role === UserRole.ADMIN || currentUser?.role === UserRole.MANAGER;
 
-  // Verrouillage du pôle pour les collaborateurs
   useEffect(() => {
     if (currentUser && !isAdminOrManager) {
       setPoleFilter(currentUser.department);
@@ -281,9 +281,9 @@ const App: React.FC = () => {
       );
     }
     return (
-      <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-10 text-white">
+      <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 text-white overflow-y-auto">
         <Logo variant="both" size={60} showText={false} className="mb-12" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 w-full max-w-7xl">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-7xl">
           {collaborators.filter(c => c.isActive).map(c => {
             const isAdmin = c.role === UserRole.ADMIN;
             const isManager = c.role === UserRole.MANAGER;
@@ -322,9 +322,17 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#f8fafc] text-[#000000]">
+    <div className="min-h-screen flex bg-[#f8fafc] text-[#000000] relative">
       {notif && (<div className={`fixed top-8 right-8 z-[1000] px-8 py-4 rounded-xl text-white font-black text-[10px] uppercase shadow-2xl ${notif.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>{notif.msg}</div>)}
       
+      {/* Overlay pour mobile quand sidebar ouverte */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[55] lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {deletingFolderId && (
         <ConfirmModal 
           title="Supprimer ce dossier ?"
@@ -399,172 +407,183 @@ const App: React.FC = () => {
         }} />
       )}
 
-      <aside className="w-80 bg-[#0f172a] text-white p-10 flex flex-col shrink-0 shadow-2xl z-50">
-        <div className="mb-12 flex justify-center"><Logo variant="both" size={42} showText={false} /></div>
-        <nav className="space-y-3 flex-grow">
+      <aside className={`fixed inset-y-0 left-0 z-[60] w-72 bg-[#0f172a] text-white p-10 flex flex-col shrink-0 shadow-2xl transition-transform duration-300 lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="mb-12 flex justify-between items-center">
+          <Logo variant="both" size={42} showText={false} />
+          <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white"><XIcon size={24}/></button>
+        </div>
+        <nav className="space-y-3 flex-grow overflow-y-auto hide-scrollbar">
           {[{v: 'log', i: <PlusCircle size={18}/>, l: 'Saisie'}, {v: 'dashboard', i: <LayoutDashboard size={18}/>, l: 'Mon Dashboard'}, {v: 'history', i: <Table size={18}/>, l: 'Historique'}].map(m => (
-            <button key={m.v} onClick={() => setView(m.v as any)} className={`w-full flex items-center gap-4 px-8 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${view === m.v ? 'bg-indigo-600' : 'hover:bg-slate-800 text-slate-400'}`}>{m.i} {m.l}</button>
+            <button key={m.v} onClick={() => { setView(m.v as any); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 px-8 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${view === m.v ? 'bg-indigo-600' : 'hover:bg-slate-800 text-slate-400'}`}>{m.i} {m.l}</button>
           ))}
           {isAdminOrManager && <div className="pt-10 border-t border-slate-800 mt-6 space-y-3">
             {[{v: 'dashboard', i: <LayoutDashboard size={18}/>, l: 'Dashboard Manager'}, {v: 'folders', i: <FolderOpen size={18}/>, l: 'Dossiers'}, {v: 'collabs', i: <Users size={18}/>, l: 'Équipe'}].map(m => (
-              <button key={m.v} onClick={() => setView(m.v as any)} className={`w-full flex items-center gap-4 px-8 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${view === m.v ? 'bg-indigo-600' : 'hover:bg-slate-800 text-slate-400'}`}>{m.i} {m.l}</button>
+              <button key={m.v} onClick={() => { setView(m.v as any); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 px-8 py-4 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all ${view === m.v ? 'bg-indigo-600' : 'hover:bg-slate-800 text-slate-400'}`}>{m.i} {m.l}</button>
             ))}
           </div>}
         </nav>
         <div className="pt-10 border-t border-slate-800 space-y-3">
-          <button onClick={() => setShowPinChange(true)} className="w-full flex items-center gap-3 text-slate-400 hover:text-indigo-400 font-black uppercase text-[9px] p-4 transition-colors"><UserCircle size={16}/> Mon Profil / PIN</button>
+          <button onClick={() => { setShowPinChange(true); setIsSidebarOpen(false); }} className="w-full flex items-center gap-3 text-slate-400 hover:text-indigo-400 font-black uppercase text-[9px] p-4 transition-colors"><UserCircle size={16}/> Mon Profil / PIN</button>
           <button onClick={handleLogout} className="w-full flex items-center gap-3 text-slate-500 hover:text-rose-400 font-black uppercase text-[9px] p-4 transition-colors"><LogOut size={16}/> Déconnexion</button>
         </div>
       </aside>
 
-      <main className="flex-grow p-12 overflow-y-auto bg-white">
+      <main className="flex-grow p-6 lg:p-12 overflow-y-auto bg-white w-full">
         {/* Note d'accueil humoristique */}
         <div className="mb-8 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center gap-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-1000">
-           <div className="p-2 bg-white rounded-xl shadow-sm"><Sparkles size={18} className="text-indigo-600"/></div>
+           <div className="p-2 bg-white rounded-xl shadow-sm shrink-0"><Sparkles size={18} className="text-indigo-600"/></div>
            <p className="text-xs font-bold text-indigo-900 italic">
              « On m'a dit que tu rêvais de tes dossiers la nuit... Pour éviter l'insomnie, tu peux les saisir directement depuis ton lit. C'est ça, la magie du cloud ! »
            </p>
         </div>
 
         <header className="mb-10 flex justify-between items-center border-b border-slate-100 pb-8 text-[#0f172a]">
-          <div>
-            <h2 className="text-5xl font-black uppercase tracking-tighter leading-none">{view === 'log' ? 'Saisie' : view}</h2>
-            <p className="text-indigo-600 font-black text-[11px] uppercase tracking-widest mt-2 flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${currentUser.department?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}></span>
-              {currentUser.name} • {currentUser.department}
-            </p>
+          <div className="flex items-center gap-4">
+            <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-3 bg-slate-50 border border-slate-100 rounded-2xl text-indigo-600"><Menu size={24}/></button>
+            <div>
+              <h2 className="text-3xl lg:text-5xl font-black uppercase tracking-tighter leading-none">{view === 'log' ? 'Saisie' : view}</h2>
+              <p className="text-indigo-600 font-black text-[10px] lg:text-[11px] uppercase tracking-widest mt-2 flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${currentUser.department?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}></span>
+                {currentUser.name} • {currentUser.department}
+              </p>
+            </div>
           </div>
-          <button onClick={() => fetchData()} className={`p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-slate-100 transition-all ${isRefreshing ? 'animate-spin' : ''}`}><RefreshCw size={22}/></button>
+          <button onClick={() => fetchData()} className={`p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-slate-100 transition-all ${isRefreshing ? 'animate-spin' : ''}`} title="Rafraîchir"><RefreshCw size={22}/></button>
         </header>
 
         <div className="space-y-10">
           {(view === 'history' || view === 'dashboard' || view === 'folders' || view === 'collabs') && (
-            <div className="flex flex-wrap gap-4 items-center bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              {/* Filtre Pôle : Verrouillé et restrictif pour les collaborateurs */}
-              {(isAdminOrManager || view === 'history' || view === 'folders' || view === 'collabs') && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Filtre Pôle</span>
-                  <div className="flex bg-white p-1 rounded-xl border border-slate-200">
-                    {isAdminOrManager ? (
-                      ['all', 'Audit', 'Expertise'].map(p => (
-                        <button key={p} onClick={() => setPoleFilter(p)} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${poleFilter === p ? (p === 'Audit' ? 'bg-[#0056b3] text-white shadow-md' : p === 'Expertise' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-900 text-white shadow-md') : 'text-slate-400 hover:text-slate-600'}`}>{p === 'all' ? 'Tous' : p}</button>
-                      ))
-                    ) : (
-                      <div className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${currentUser.department === 'Audit' ? 'bg-[#0056b3] text-white shadow-md' : 'bg-orange-500 text-white shadow-md'}`}>
-                        {currentUser.department}
-                      </div>
-                    )}
+            <div className="flex flex-col gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <div className="flex flex-wrap gap-4 items-center">
+                {/* Filtre Pôle */}
+                {(isAdminOrManager || view === 'history' || view === 'folders' || view === 'collabs') && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Filtre Pôle</span>
+                    <div className="flex bg-white p-1 rounded-xl border border-slate-200">
+                      {isAdminOrManager ? (
+                        ['all', 'Audit', 'Expertise'].map(p => (
+                          <button key={p} onClick={() => setPoleFilter(p)} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${poleFilter === p ? (p === 'Audit' ? 'bg-[#0056b3] text-white shadow-md' : p === 'Expertise' ? 'bg-orange-500 text-white shadow-md' : 'bg-slate-900 text-white shadow-md') : 'text-slate-400 hover:text-slate-600'}`}>{p === 'all' ? 'Tous' : p}</button>
+                        ))
+                      ) : (
+                        <div className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${currentUser.department === 'Audit' ? 'bg-[#0056b3] text-white shadow-md' : 'bg-orange-500 text-white shadow-md'}`}>
+                          {currentUser.department}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className="flex flex-col gap-1 flex-grow">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Recherche</span>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-                  <input 
-                    type="text" 
-                    placeholder="Rechercher..." 
-                    className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                  />
+                <div className="flex flex-col gap-1 flex-grow">
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Recherche</span>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                    <input 
+                      type="text" 
+                      placeholder="Rechercher..." 
+                      className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
 
-              {(view === 'history' || view === 'dashboard') && (
-                <>
-                  {view === 'history' && (
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Tri Chronologique</span>
-                      <select className="p-2.5 border border-slate-200 rounded-xl font-black text-indigo-600 text-[10px] outline-none shadow-sm" value={sortOrder} onChange={e => setSortOrder(e.target.value as 'asc' | 'desc')}>
-                        <option value="desc">Plus récent au plus ancien</option>
-                        <option value="asc">Plus ancien au plus récent</option>
+              <div className="flex flex-wrap gap-4 items-center">
+                {(view === 'history' || view === 'dashboard') && (
+                  <>
+                    {view === 'history' && (
+                      <div className="flex flex-col gap-1 min-w-[150px]">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Tri</span>
+                        <select className="p-2.5 border border-slate-200 rounded-xl font-black text-indigo-600 text-[10px] outline-none shadow-sm" value={sortOrder} onChange={e => setSortOrder(e.target.value as 'asc' | 'desc')}>
+                          <option value="desc">Récent → Ancien</option>
+                          <option value="asc">Ancien → Récent</option>
+                        </select>
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1 min-w-[120px]">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Exercice</span>
+                      <select className="p-2.5 border border-slate-200 rounded-xl font-black text-indigo-600 text-[10px] outline-none shadow-sm" value={exerciceFilter} onChange={e => setExerciceFilter(parseInt(e.target.value))}>
+                        <option value={0}>Tous</option>
+                        {EXERCICES.map(ex => <option key={ex} value={ex}>{ex}</option>)}
                       </select>
                     </div>
-                  )}
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Exercice</span>
-                    <select className="p-2.5 border border-slate-200 rounded-xl font-black text-indigo-600 text-[10px] outline-none shadow-sm" value={exerciceFilter} onChange={e => setExerciceFilter(parseInt(e.target.value))}>
-                      <option value={0}>Tous</option>
-                      {EXERCICES.map(ex => <option key={ex} value={ex}>{ex}</option>)}
-                    </select>
-                  </div>
-                  {/* Suppression de la période date De/À pour le Dashboard */}
-                  {view === 'history' && (
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Période (De → À)</span>
-                      <div className="flex items-center gap-2">
-                        <input type="date" className="p-2 border border-slate-200 rounded-xl font-bold text-xs" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                        <span className="text-slate-300">→</span>
-                        <input type="date" className="p-2 border border-slate-200 rounded-xl font-bold text-xs" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                    {view === 'history' && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Période</span>
+                        <div className="flex items-center gap-2">
+                          <input type="date" className="p-2 border border-slate-200 rounded-xl font-bold text-[10px]" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                          <span className="text-slate-300">→</span>
+                          <input type="date" className="p-2 border border-slate-200 rounded-xl font-bold text-[10px]" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </>
-              )}
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
 
           {view === 'history' && (
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-wrap justify-between items-center gap-3">
                 <div className="flex gap-2">
                   {selectedEntryIds.size > 0 && (
-                    <button onClick={handleBulkDelete} className="flex items-center gap-2 px-6 py-3 bg-rose-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-rose-700 transition-all animate-in slide-in-from-left">
-                      <Trash2 size={16}/> Supprimer la sélection ({selectedEntryIds.size})
+                    <button onClick={handleBulkDelete} className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg hover:bg-rose-700 transition-all">
+                      <Trash2 size={14}/> Supprimer ({selectedEntryIds.size})
                     </button>
                   )}
                 </div>
-                <div className="flex gap-3">
-                  <button onClick={handleExportHistorySimple} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg transition-all">
-                    <FileSpreadsheet size={16}/> Export Simple (Analytique)
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={handleExportHistorySimple} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg transition-all" title="Export Analytique">
+                    <FileSpreadsheet size={14}/> Simple
                   </button>
-                  <button onClick={handleExportGroupedCabinet} className="flex items-center gap-2 px-6 py-3 bg-[#0056b3] text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-all">
-                    <Layers size={16}/> Export Regroupe (Portefeuille)
+                  <button onClick={handleExportGroupedCabinet} className="flex items-center gap-2 px-4 py-2 bg-[#0056b3] text-white rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-all" title="Export Portefeuille">
+                    <Layers size={14}/> Regroupe
                   </button>
                 </div>
               </div>
               <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl overflow-hidden">
-                <table className="w-full text-left">
-                  <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b">
-                    <tr>
-                      <th className="p-6 w-10">
-                        <button onClick={toggleSelectAll} className="text-white hover:text-indigo-400 transition-colors">
-                          {selectedEntryIds.size === filteredHistory.length && filteredHistory.length > 0 ? <CheckSquare size={18}/> : <Square size={18}/>}
-                        </button>
-                      </th>
-                      <th className="p-6">Date</th><th className="p-6">Collaborateur</th><th className="p-6">Dossier</th><th className="p-6">Travaux</th><th className="p-6 text-center">H</th><th className="p-6 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredHistory.map(e => {
-                      const nameUpper = (e.folderName || "").toUpperCase();
-                      const isActuallyAudit = nameUpper.includes("PRUNAY") || nameUpper.includes("PRUNNAY") || (e.service || "").toLowerCase() === 'audit';
-                      return (
-                        <tr key={e.id} className={`text-xs hover:bg-slate-50 transition-all ${selectedEntryIds.has(e.id) ? 'bg-indigo-50/50' : ''} text-[#000000] font-bold`}>
-                          <td className="p-6">
-                            <button onClick={() => toggleEntrySelection(e.id)} className={`${selectedEntryIds.has(e.id) ? 'text-indigo-600' : 'text-slate-300'}`}>
-                              {selectedEntryIds.has(e.id) ? <CheckSquare size={18}/> : <Square size={18}/>}
-                            </button>
-                          </td>
-                          <td className="p-6 whitespace-nowrap" onClick={() => toggleEntrySelection(e.id)}>{formatDateFR(e.date)}</td>
-                          <td className="p-6 uppercase whitespace-nowrap">{collaborators.find(c => String(c.id) === String(e.collaboratorId))?.name || "Importé"}</td>
-                          <td className="p-6">
-                            <span className={`text-[9px] font-black block ${isActuallyAudit ? 'text-[#0056b3]' : 'text-orange-500'}`}>{e.folderNumber}</span>
-                            <span className="uppercase text-[10px]">{e.folderName}</span>
-                          </td>
-                          <td className="p-6 text-slate-600 italic text-[11px] max-w-[200px] truncate">{e.description}</td>
-                          <td className="p-6 text-center text-[#000000] text-base">{e.duration}h</td>
-                          <td className="p-6 text-right whitespace-nowrap">
-                            <button onClick={() => setEditEntry(e)} className="p-2 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all mr-2"><Edit3 size={16}/></button>
-                            <button onClick={async () => { if(confirm("Supprimer cette saisie ?")) { await supabase.from('time_entries').delete().eq('id', Number(e.id)); fetchData(); } }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={16}/></button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left min-w-[800px]">
+                    <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b">
+                      <tr>
+                        <th className="p-6 w-10">
+                          <button onClick={toggleSelectAll} className="text-white hover:text-indigo-400 transition-colors">
+                            {selectedEntryIds.size === filteredHistory.length && filteredHistory.length > 0 ? <CheckSquare size={18}/> : <Square size={18}/>}
+                          </button>
+                        </th>
+                        <th className="p-6">Date</th><th className="p-6">Collaborateur</th><th className="p-6">Dossier</th><th className="p-6">Travaux</th><th className="p-6 text-center">H</th><th className="p-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredHistory.map(e => {
+                        const nameUpper = (e.folderName || "").toUpperCase();
+                        const isActuallyAudit = nameUpper.includes("PRUNAY") || nameUpper.includes("PRUNNAY") || (e.service || "").toLowerCase() === 'audit';
+                        return (
+                          <tr key={e.id} className={`text-xs hover:bg-slate-50 transition-all ${selectedEntryIds.has(e.id) ? 'bg-indigo-50/50' : ''} text-[#000000] font-bold`}>
+                            <td className="p-6">
+                              <button onClick={() => toggleEntrySelection(e.id)} className={`${selectedEntryIds.has(e.id) ? 'text-indigo-600' : 'text-slate-300'}`}>
+                                {selectedEntryIds.has(e.id) ? <CheckSquare size={18}/> : <Square size={18}/>}
+                              </button>
+                            </td>
+                            <td className="p-6 whitespace-nowrap" onClick={() => toggleEntrySelection(e.id)}>{formatDateFR(e.date)}</td>
+                            <td className="p-6 uppercase whitespace-nowrap">{collaborators.find(c => String(c.id) === String(e.collaboratorId))?.name || "Importé"}</td>
+                            <td className="p-6">
+                              <span className={`text-[9px] font-black block ${isActuallyAudit ? 'text-[#0056b3]' : 'text-orange-500'}`}>{e.folderNumber}</span>
+                              <span className="uppercase text-[10px]">{e.folderName}</span>
+                            </td>
+                            <td className="p-6 text-slate-600 italic text-[11px] max-w-[200px] truncate">{e.description}</td>
+                            <td className="p-6 text-center text-[#000000] text-base">{e.duration}h</td>
+                            <td className="p-6 text-right whitespace-nowrap">
+                              <button onClick={() => setEditEntry(e)} className="p-2 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all mr-2"><Edit3 size={16}/></button>
+                              <button onClick={async () => { if(confirm("Supprimer cette saisie ?")) { await supabase.from('time_entries').delete().eq('id', Number(e.id)); fetchData(); } }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={16}/></button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
                 {filteredHistory.length === 0 && (
                   <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucune saisie trouvée</div>
                 )}
@@ -574,28 +593,30 @@ const App: React.FC = () => {
 
           {view === 'folders' && (
             <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl overflow-hidden text-[#000000]">
-                <table className="w-full text-left">
-                  <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b"><tr><th className="p-6">Numéro</th><th className="p-6">Libellé du Dossier</th><th className="p-6 text-center">Pôle</th><th className="p-6 text-right">Actions</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredFoldersList.map(f => {
-                        const nameUpper = (f.name || "").toUpperCase();
-                        const isPrunay = nameUpper.includes("PRUNAY") || nameUpper.includes("PRUNNAY");
-                        const isActuallyAudit = isPrunay || (f.serviceType || "").toLowerCase() === 'audit';
-                        const effectivePole = isActuallyAudit ? 'Audit' : 'Expertise';
-                        return (
-                          <tr key={f.id} className="hover:bg-slate-50 text-[#000000] font-bold">
-                            <td className={`p-6 font-black ${effectivePole?.toLowerCase() === 'audit' ? 'text-[#0056b3]' : 'text-orange-500'}`}>{f.number}</td>
-                            <td className="p-6 uppercase">{f.name}</td>
-                            <td className="p-6 text-center"><span className={`px-2 py-1 rounded text-[8px] font-black text-white ${effectivePole?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{effectivePole}</span></td>
-                            <td className="p-6 text-right">
-                              <button onClick={() => setEntityModal({type: 'folder', data: f})} className="p-3 text-slate-400 hover:text-indigo-600 transition-all"><Edit3 size={18}/></button>
-                              <button onClick={() => setDeletingFolderId(f.id)} className="p-3 text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={18}/></button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left min-w-[600px]">
+                    <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b"><tr><th className="p-6">Numéro</th><th className="p-6">Libellé du Dossier</th><th className="p-6 text-center">Pôle</th><th className="p-6 text-right">Actions</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredFoldersList.map(f => {
+                          const nameUpper = (f.name || "").toUpperCase();
+                          const isPrunay = nameUpper.includes("PRUNAY") || nameUpper.includes("PRUNNAY");
+                          const isActuallyAudit = isPrunay || (f.serviceType || "").toLowerCase() === 'audit';
+                          const effectivePole = isActuallyAudit ? 'Audit' : 'Expertise';
+                          return (
+                            <tr key={f.id} className="hover:bg-slate-50 text-[#000000] font-bold">
+                              <td className={`p-6 font-black ${effectivePole?.toLowerCase() === 'audit' ? 'text-[#0056b3]' : 'text-orange-500'}`}>{f.number}</td>
+                              <td className="p-6 uppercase">{f.name}</td>
+                              <td className="p-6 text-center"><span className={`px-2 py-1 rounded text-[8px] font-black text-white ${effectivePole?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{effectivePole}</span></td>
+                              <td className="p-6 text-right">
+                                <button onClick={() => setEntityModal({type: 'folder', data: f})} className="p-3 text-slate-400 hover:text-indigo-600 transition-all"><Edit3 size={18}/></button>
+                                <button onClick={() => setDeletingFolderId(f.id)} className="p-3 text-slate-400 hover:text-rose-500 transition-all"><Trash2 size={18}/></button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
                 {filteredFoldersList.length === 0 && (
                   <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucun dossier trouvé</div>
                 )}
@@ -620,19 +641,21 @@ const App: React.FC = () => {
           }} onQuickFolderAdd={() => setView('folders')} />}
           {view === 'collabs' && (
             <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl overflow-hidden text-[#000000]">
-               <table className="w-full text-left">
-                  <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b"><tr><th className="p-6">Nom</th><th className="p-6">Pôle</th><th className="p-6">Rôle</th><th className="p-6 text-right w-20">Actions</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredCollaboratorsList.map(c => (
-                        <tr key={c.id} className={`hover:bg-slate-50 text-[#000000] font-bold ${!c.isActive ? 'opacity-50 grayscale' : ''}`}>
-                          <td className="p-6 uppercase">{c.name}</td>
-                          <td className="p-6"><span className={`px-3 py-1 rounded-full text-[8px] font-black text-white ${c.department?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{c.department}</span></td>
-                          <td className="p-6 uppercase text-[10px] text-slate-500">{c.role}</td>
-                          <td className="p-6 text-right"><button onClick={() => setEntityModal({type: 'collab', data: c})} className="p-3 text-slate-400 hover:text-indigo-600 transition-all"><Edit3 size={18}/></button></td>
-                        </tr>
-                      ))}
-                  </tbody>
-               </table>
+               <div className="overflow-x-auto">
+                <table className="w-full text-left min-w-[500px]">
+                    <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b"><tr><th className="p-6">Nom</th><th className="p-6">Pôle</th><th className="p-6">Rôle</th><th className="p-6 text-right w-20">Actions</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredCollaboratorsList.map(c => (
+                          <tr key={c.id} className={`hover:bg-slate-50 text-[#000000] font-bold ${!c.isActive ? 'opacity-50 grayscale' : ''}`}>
+                            <td className="p-6 uppercase">{c.name}</td>
+                            <td className="p-6"><span className={`px-3 py-1 rounded-full text-[8px] font-black text-white ${c.department?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{c.department}</span></td>
+                            <td className="p-6 uppercase text-[10px] text-slate-500">{c.role}</td>
+                            <td className="p-6 text-right"><button onClick={() => setEntityModal({type: 'collab', data: c})} className="p-3 text-slate-400 hover:text-indigo-600 transition-all"><Edit3 size={18}/></button></td>
+                          </tr>
+                        ))}
+                    </tbody>
+                </table>
+               </div>
                {filteredCollaboratorsList.length === 0 && (
                   <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucun collaborateur trouvé</div>
                 )}
