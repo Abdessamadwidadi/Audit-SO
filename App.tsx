@@ -23,6 +23,13 @@ const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 const normalizeDate = (dateStr: any): string => {
   if (!dateStr) return new Date().toISOString().split('T')[0];
   const s = String(dateStr).trim();
+  
+  // Gérer le format DD/MM/YYYY (souvent utilisé lors des imports manuels Excel/CSV dans Supabase)
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const [d, m, y] = s.split('/');
+    return `${y}-${m}-${d}`;
+  }
+  
   if (s.includes('T')) return s.split('T')[0];
   return s;
 };
@@ -99,7 +106,16 @@ const App: React.FC = () => {
       })) || []);
 
       setEntries(eData?.map(e => ({ 
-        id: String(e.id), collaboratorId: String(e.collaborator_id), folderId: String(e.folder_id), duration: parseFloat(e.duration) || 0, date: normalizeDate(e.date), description: e.description || "", service: (e.service || ServiceType.EXPERTISE) as ServiceType, exercice: Number(e.exercice) || 2025, folderName: e.folder_name, folderNumber: e.folder_number
+        id: String(e.id), 
+        collaboratorId: e.collaborator_id ? String(e.collaborator_id) : "null", 
+        folderId: e.folder_id ? String(e.folder_id) : "null", 
+        duration: parseFloat(e.duration) || 0, 
+        date: normalizeDate(e.date), 
+        description: e.description || "", 
+        service: (e.service || ServiceType.EXPERTISE) as ServiceType, 
+        exercice: Number(e.exercice) || 2025, 
+        folderName: e.folder_name || "Dossier Inconnu", 
+        folderNumber: e.folder_number || "-"
       })) || []);
       
       setIsDataLoaded(true);
@@ -118,6 +134,7 @@ const App: React.FC = () => {
 
   const filteredHistory = useMemo(() => {
     let list = entries.filter(e => {
+      // Pour les admins, on montre tout, y compris les imports sans ID de collaborateur
       const matchCollab = isAdminOrManager ? true : String(e.collaboratorId) === String(currentUserId);
       
       // Règle PRUNAY/PRUNNAY = AUDIT
@@ -494,7 +511,7 @@ const App: React.FC = () => {
                             </button>
                           </td>
                           <td className="p-6 whitespace-nowrap" onClick={() => toggleEntrySelection(e.id)}>{formatDateFR(e.date)}</td>
-                          <td className="p-6 uppercase whitespace-nowrap">{collaborators.find(c => String(c.id) === String(e.collaboratorId))?.name}</td>
+                          <td className="p-6 uppercase whitespace-nowrap">{collaborators.find(c => String(c.id) === String(e.collaboratorId))?.name || "Importé"}</td>
                           <td className="p-6">
                             <span className={`text-[9px] font-black block ${isActuallyAudit ? 'text-[#0056b3]' : 'text-orange-500'}`}>{e.folderNumber}</span>
                             <span className="uppercase text-[10px]">{e.folderName}</span>
