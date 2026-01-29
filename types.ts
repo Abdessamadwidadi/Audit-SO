@@ -10,18 +10,19 @@ export enum UserRole {
   COLLABORATOR = 'Collaborateur'
 }
 
-export type TaskUrgency = 'normal' | 'urgent' | 'critique';
-
 export const EXERCICES = [2024, 2025, 2026, 2027];
 
 export const PREDEFINED_TASKS = [
   "Révision comptable",
-  "Pointage de banque",
-  "Audit d'inventaire",
-  "Rédaction de rapport",
+  "Saisie factures",
+  "Déclarations fiscales",
+  "Audit légal",
+  "Conseil juridique",
+  "Gestion sociale",
   "Réunion client",
-  "Mission terrain",
-  "Déclarations fiscales"
+  "Reporting mensuel",
+  "Tenue de dossiers",
+  "Conseil fiscal"
 ];
 
 export interface Collaborator {
@@ -29,12 +30,12 @@ export interface Collaborator {
   name: string;
   department: ServiceType;
   hiringDate: string;
-  dateDepart?: string; // Optionnel : date de fin de contrat
+  dateDepart?: string;
   role: UserRole;
   password?: string;
-  startTime: string; // Format "HH:mm"
-  endTime: string;   // Format "HH:mm"
-  isActive: boolean; // Pour la gestion de l'archivage (Soft Delete)
+  startTime: string;
+  endTime: string;
+  isActive: boolean;
 }
 
 export interface Folder {
@@ -52,6 +53,8 @@ export interface TimeEntry {
   collaboratorId: string;
   service: ServiceType;
   folderId: string;
+  folderName?: string;
+  folderNumber?: string;
   duration: number;
   description: string;
   date: string;
@@ -59,18 +62,7 @@ export interface TimeEntry {
   exercice: number;
 }
 
-export interface TaskAssignment {
-  id: string;
-  title: string;
-  assignedToId: string;
-  assignedById: string;
-  pole: string;
-  deadline: string;
-  status: 'todo' | 'done';
-  urgency: TaskUrgency;
-  exercice: number;
-}
-
+// Ajout de l'interface Attendance pour le module ClockingModule
 export interface Attendance {
   id: string;
   collaboratorId: string;
@@ -79,4 +71,16 @@ export interface Attendance {
   checkOut?: string;
   modifiedAt?: string;
   modifiedByName?: string;
+}
+
+// Ajout de l'interface TaskAssignment pour le module PlanningModule
+export interface TaskAssignment {
+  id: string;
+  title: string;
+  assignedToId: string;
+  assignedById?: string;
+  deadline: string;
+  pole: ServiceType;
+  urgency: 'low' | 'normal' | 'high';
+  status: 'todo' | 'done';
 }

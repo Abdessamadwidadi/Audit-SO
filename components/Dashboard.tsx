@@ -1,14 +1,13 @@
 
 import React, { useState, useMemo } from 'react';
-import { TimeEntry, Folder, Attendance, Collaborator, ServiceType, UserRole } from '../types';
-import { LayoutGrid, Target, TrendingUp, Sparkles, UserCheck, Timer, Loader2, Download, Briefcase, Activity, BarChart3, PieChart } from 'lucide-react';
+import { TimeEntry, Folder, Collaborator, ServiceType, UserRole } from '../types';
+import { LayoutGrid, Target, TrendingUp, Sparkles, Loader2, Briefcase, Activity } from 'lucide-react';
 import { generateAIAnalysis } from '../services/geminiService';
-import { exportToExcel } from '../services/csvService';
 
 interface Props {
   entries: TimeEntry[];
   folders: Folder[];
-  attendance: Attendance[];
+  attendance: any[]; // Gardé pour compatibilité mais non utilisé
   collaborators: Collaborator[];
   poleFilter: string;
   startDate: string;
@@ -16,14 +15,13 @@ interface Props {
   exerciceFilter: number;
 }
 
-const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborators, poleFilter, startDate, endDate, exerciceFilter }) => {
-  const [activeTab, setActiveTab] = useState<'global' | 'budgets' | 'equipe' | 'assiduite' | 'ia'>('global');
+const Dashboard: React.FC<Props> = ({ entries, folders, collaborators, poleFilter, startDate, endDate, exerciceFilter }) => {
+  const [activeTab, setActiveTab] = useState<'global' | 'budgets' | 'equipe' | 'ia'>('global');
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const filteredEntries = useMemo(() => {
     let list = entries;
-    // Appliquer le filtre exercice
     if (exerciceFilter !== 0) {
       list = list.filter(e => e.exercice === exerciceFilter);
     }
@@ -81,7 +79,7 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
       </div>
 
       {activeTab === 'global' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in slide-in-from-bottom-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4">
           <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-100">
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Production Totale</p>
             <p className="text-4xl font-black text-indigo-600">{totalHours}h</p>
@@ -98,28 +96,28 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
       )}
 
       {activeTab === 'budgets' && (
-        <div className="bg-white rounded-[2rem] border border-slate-200 shadow-xl overflow-hidden">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100 text-[10px] font-black uppercase text-slate-600 border-b">
+        <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl overflow-hidden text-[#000000]">
+          <table className="w-full text-left">
+            <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b">
               <tr><th className="p-6">Dossier</th><th className="p-6 text-center">Consommé</th><th className="p-6">Utilisation</th><th className="p-6 text-right">Statut</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {budgetData.map(f => (
-                <tr key={f.id} className="hover:bg-slate-50">
-                  <td className="p-6 font-black text-slate-900">{f.name}</td>
-                  <td className="p-6 text-center font-black text-slate-800">{f.consumed}h / {f.budget}h</td>
+                <tr key={f.id} className="hover:bg-slate-50 text-[#000000] font-bold">
+                  <td className="p-6 uppercase">{f.name}</td>
+                  <td className="p-6 text-center">{f.consumed}h / {f.budget}h</td>
                   <td className="p-6">
                     <div className="w-40 bg-slate-100 h-2 rounded-full overflow-hidden shadow-inner">
-                      <div className={`h-full transition-all duration-500 ${f.percent > 90 ? 'bg-rose-500' : (f.serviceType?.toLowerCase().trim() === 'audit' ? 'bg-blue-600' : 'bg-orange-500')}`} style={{ width: `${Math.min(f.percent, 100)}%` }}></div>
+                      <div className={`h-full transition-all duration-500 ${f.percent > 90 ? 'bg-rose-500' : (f.serviceType?.toLowerCase().trim() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500')}`} style={{ width: `${Math.min(f.percent, 100)}%` }}></div>
                     </div>
                   </td>
-                  <td className="p-6 text-right font-black uppercase text-[10px] text-slate-900">{f.percent}%</td>
+                  <td className="p-6 text-right font-black uppercase text-[10px]">{f.percent}%</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {budgetData.length === 0 && (
-            <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucun dossier sur cette période</div>
+            <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucune donnée budgétaire disponible</div>
           )}
         </div>
       )}
@@ -127,9 +125,9 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
       {activeTab === 'equipe' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
            {collabData.map(c => (
-             <div key={c.name} className={`p-8 bg-white rounded-[2rem] border-2 ${c.collab.department?.toLowerCase().trim() === 'audit' ? 'border-blue-100' : 'border-orange-100'} shadow-sm transition-all hover:shadow-md`}>
-                <h4 className="font-black text-slate-900 uppercase tracking-tight">{c.name}</h4>
-                <p className={`text-3xl font-black mt-4 ${c.collab.department?.toLowerCase().trim() === 'audit' ? 'text-blue-600' : 'text-orange-500'}`}>{c.hours}h</p>
+             <div key={c.name} className={`p-8 bg-white rounded-[2rem] border-2 ${c.collab.department?.toLowerCase().trim() === 'audit' ? 'border-[#0056b3]/10' : 'border-orange-100'} shadow-sm transition-all hover:shadow-md`}>
+                <h4 className="font-black text-[#000000] uppercase tracking-tight">{c.name}</h4>
+                <p className={`text-3xl font-black mt-4 ${c.collab.department?.toLowerCase().trim() === 'audit' ? 'text-[#0056b3]' : 'text-orange-500'}`}>{c.hours}h</p>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{c.collab.department}</p>
              </div>
            ))}
@@ -141,7 +139,7 @@ const Dashboard: React.FC<Props> = ({ entries, folders, attendance, collaborator
           <button onClick={handleAIAnalysis} disabled={isAnalyzing} className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-xl flex items-center gap-3 mx-auto hover:bg-indigo-700 transition-all">
             {isAnalyzing ? <Loader2 className="animate-spin"/> : <Sparkles/>} {isAnalyzing ? 'Analyse...' : 'Générer analyse IA'}
           </button>
-          {aiAnalysis && <div className="mt-8 p-8 bg-slate-50 rounded-2xl text-left font-bold text-slate-800 whitespace-pre-wrap leading-relaxed shadow-inner">{aiAnalysis}</div>}
+          {aiAnalysis && <div className="mt-8 p-8 bg-slate-50 rounded-2xl text-left font-bold text-[#000000] whitespace-pre-wrap leading-relaxed shadow-inner">{aiAnalysis}</div>}
         </div>
       )}
     </div>

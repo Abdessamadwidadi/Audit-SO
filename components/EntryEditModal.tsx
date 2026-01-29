@@ -14,7 +14,6 @@ interface Props {
 const EntryEditModal: React.FC<Props> = ({ entry, folders, currentUser, onSave, onClose }) => {
   const [formData, setFormData] = useState<TimeEntry>({ ...entry });
 
-  // Filtrage des dossiers pour que le collaborateur ne voit que son pôle
   const allowedFolders = useMemo(() => {
     if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER) {
       return folders;
@@ -46,7 +45,7 @@ const EntryEditModal: React.FC<Props> = ({ entry, folders, currentUser, onSave, 
         <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/80">
           <div>
             <h3 className="text-2xl font-black text-slate-900 tracking-tight">Modifier la saisie</h3>
-            <p className={`text-[10px] font-black ${formData.service === ServiceType.AUDIT ? 'text-blue-600' : 'text-orange-500'} uppercase tracking-[0.2em] mt-1`}>
+            <p className={`text-[10px] font-black ${formData.service === ServiceType.AUDIT ? 'text-[#0056b3]' : 'text-orange-500'} uppercase tracking-[0.2em] mt-1`}>
               Dossier actuel : {formData.folderName} ({formData.service})
             </p>
           </div>
@@ -79,7 +78,7 @@ const EntryEditModal: React.FC<Props> = ({ entry, folders, currentUser, onSave, 
                 step="0.5"
                 min="0.5"
                 required
-                className={`w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-black ${formData.service === ServiceType.AUDIT ? 'text-blue-600' : 'text-orange-500'} text-2xl text-center transition-all`}
+                className={`w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/10 font-black ${formData.service === ServiceType.AUDIT ? 'text-[#0056b3]' : 'text-orange-500'} text-2xl text-center transition-all`}
                 value={formData.duration}
                 onChange={e => setFormData({ ...formData, duration: parseFloat(e.target.value) })}
               />
@@ -137,7 +136,7 @@ const EntryEditModal: React.FC<Props> = ({ entry, folders, currentUser, onSave, 
             </button>
             <button
               type="submit"
-              className={`flex-1 px-8 py-5 ${formData.service === ServiceType.AUDIT ? 'bg-blue-600' : 'bg-orange-500'} text-white font-black rounded-3xl hover:bg-slate-900 shadow-xl transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-[10px]`}
+              className={`flex-1 px-8 py-5 ${formData.service === ServiceType.AUDIT ? 'bg-[#0056b3]' : 'bg-orange-500'} text-white font-black rounded-3xl hover:bg-slate-900 shadow-xl transition-all flex items-center justify-center gap-3 uppercase tracking-widest text-[10px]`}
             >
               <Save size={18} />
               Enregistrer

@@ -84,16 +84,13 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
     }
     else if (timeRange === 'week') {
       const day = now.getDay(); // 0=Sun, 1=Mon...
-      // On calcule le Lundi de la semaine en cours (Lundi=1)
       const diffToMonday = (day === 0 ? -6 : 1) - day;
       startDate = new Date(now);
       startDate.setDate(now.getDate() + diffToMonday);
-      // Le Dimanche est Lundi + 6 jours
       endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + 6);
     }
     else if (timeRange === 'month') {
-      // 1er du mois au dernier jour du mois
       startDate = new Date(now.getFullYear(), now.getMonth(), 1);
       endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     }
@@ -105,15 +102,12 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
     const dates: string[] = [];
     let iter = new Date(startDate);
     
-    // Normalisation des dates pour comparaison stricte sans effet de bord d'heures
     const startCompare = toLocalISO(startDate);
     const endCompare = toLocalISO(endDate);
     const todayCompare = toLocalISO(now);
     
-    // On ne génère des lignes que jusqu'à aujourd'hui au maximum pour la période sélectionnée (ou la fin de période si c'est déjà passé)
     const limitDateStr = endCompare > todayCompare ? todayCompare : endCompare;
     
-    // Boucle de génération des dates dans l'intervalle strict
     let safety = 0;
     while (toLocalISO(iter) <= limitDateStr && safety < 100) {
       dates.push(toLocalISO(iter));
@@ -318,18 +312,20 @@ const ClockingModule: React.FC<Props> = ({ currentUser, collaborators, attendanc
                </thead>
                <tbody className="divide-y divide-slate-100">
                  {fullAttendanceGrid.map(item => (
-                    <tr key={item.id} className={`hover:bg-indigo-50/50 transition-colors group ${item.status === 'Absent' || item.status === 'En retard' ? 'bg-rose-50/20' : item.status === 'Repos' ? 'bg-slate-50/10' : ''}`}>
-                      <td className="p-8 font-bold text-slate-900">{formatDateFR(item.date)}</td>
-                      <td className="p-8 font-black text-slate-900 group-hover:text-indigo-600 transition-colors uppercase">{item.collabName}</td>
+                    <tr key={item.id} className={`hover:bg-slate-50 transition-colors group ${item.status === 'Absent' || item.status === 'En retard' ? 'bg-rose-50/20' : item.status === 'Repos' ? 'bg-slate-50/10' : ''}`}>
+                      <td className="p-8 font-bold text-[#000000]">{formatDateFR(item.date)}</td>
+                      <td className="p-8 font-black text-[#000000] group-hover:text-indigo-600 transition-colors uppercase">{item.collabName}</td>
                       <td className="p-8 text-center">
-                        <div className="font-black text-indigo-600 text-xl">{item.checkIn}</div>
+                        {/* Correction : Forcer la couleur noire #000000 pour les heures de pointage */}
+                        <div className="font-black text-[#000000] text-xl">{item.checkIn}</div>
                         {item.modifiedAt && (
                           <div className="text-[8px] font-black italic text-rose-400 uppercase mt-1">
                             Rectifié le {new Date(item.modifiedAt).toLocaleDateString('fr-FR')} par {item.modifiedByName}
                           </div>
                         )}
                       </td>
-                      <td className="p-8 text-center font-black text-slate-900 text-xl">{item.checkOut}</td>
+                      {/* Correction : Forcer la couleur noire #000000 */}
+                      <td className="p-8 text-center font-black text-[#000000] text-xl">{item.checkOut}</td>
                       <td className="p-8 text-center">
                         <span className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${item.status === 'Absent' || item.status === 'En retard' ? 'bg-rose-100 text-rose-700' : item.status === 'Repos' ? 'bg-slate-100 text-slate-400' : 'bg-emerald-100 text-emerald-700'}`}>
                           {item.status}

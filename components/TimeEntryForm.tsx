@@ -91,10 +91,12 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, onQu
           <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
              {isAdminOrManager ? (
                ['Audit', 'Expertise'].map(p => (
-                 <button key={p} type="button" onClick={() => setPoleFilter(p)} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${poleFilter === p ? (p.toLowerCase() === 'audit' ? 'bg-blue-600 text-white' : 'bg-orange-500 text-white') : 'text-slate-400'}`}>{p}</button>
+                 // Correction des couleurs Pôles : Audit (#0056b3)
+                 <button key={p} type="button" onClick={() => setPoleFilter(p)} className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase transition-all ${poleFilter === p ? (p.toLowerCase() === 'audit' ? 'bg-[#0056b3] text-white' : 'bg-orange-500 text-white') : 'text-slate-400'}`}>{p}</button>
                ))
              ) : (
-               <div className={`px-4 py-2 ${currentUser.department?.toLowerCase() === 'audit' ? 'bg-blue-600' : 'bg-orange-500'} text-white rounded-lg text-[9px] font-black uppercase shadow-sm`}>{currentUser.department}</div>
+               // Correction des couleurs Pôles : Audit (#0056b3)
+               <div className={`px-4 py-2 ${currentUser.department?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'} text-white rounded-lg text-[9px] font-black uppercase shadow-sm`}>{currentUser.department}</div>
              )}
           </div>
           <div className={`px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase flex items-center gap-3 border transition-all ${dailyTotal >= 7 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
@@ -126,10 +128,12 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, onQu
                   {filteredResults.map(f => (
                     <button key={f.id} type="button" onClick={() => setFormData({...formData, folderId: f.id})} className="w-full flex items-center justify-between p-4 hover:bg-indigo-50 transition-colors text-left group">
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400 group-hover:bg-opacity-20 ${(f.serviceType || '').toLowerCase() === 'audit' ? 'group-hover:bg-blue-600 group-hover:text-blue-600' : 'group-hover:bg-orange-500 group-hover:text-orange-500'} transition-all`}><Briefcase size={14} /></div>
+                        {/* Correction des couleurs Audit (#0056b3) */}
+                        <div className={`w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400 group-hover:bg-opacity-20 ${(f.serviceType || '').toLowerCase() === 'audit' ? 'group-hover:bg-[#0056b3] group-hover:text-[#0056b3]' : 'group-hover:bg-orange-500 group-hover:text-orange-500'} transition-all`}><Briefcase size={14} /></div>
                         <div>
                           <p className="font-bold text-[11px]">{f.name}</p>
-                          <p className={`text-[8px] font-black ${(f.serviceType || '').toLowerCase() === 'audit' ? 'text-blue-600' : 'text-orange-500'} uppercase tracking-tight`}>{f.number} • {f.serviceType}</p>
+                          {/* Correction des couleurs Audit (#0056b3) */}
+                          <p className={`text-[8px] font-black ${(f.serviceType || '').toLowerCase() === 'audit' ? 'text-[#0056b3]' : 'text-orange-500'} uppercase tracking-tight`}>{f.number} • {f.serviceType}</p>
                         </div>
                       </div>
                       <ChevronRight size={14} className="text-slate-200" />
@@ -138,7 +142,8 @@ const TimeEntryForm: React.FC<Props> = ({ currentUser, folders, onAddEntry, onQu
                 </div>
               </div>
             ) : (
-              <div className={`p-6 rounded-2xl flex items-center justify-between animate-in zoom-in border-2 text-white shadow-xl ${(selectedFolder?.serviceType || '').toLowerCase() === 'audit' ? 'bg-blue-600 border-blue-700' : 'bg-orange-500 border-orange-600'}`}>
+              // Correction des couleurs Audit (#0056b3)
+              <div className={`p-6 rounded-2xl flex items-center justify-between animate-in zoom-in border-2 text-white shadow-xl ${(selectedFolder?.serviceType || '').toLowerCase() === 'audit' ? 'bg-[#0056b3] border-[#004494]' : 'bg-orange-500 border-orange-600'}`}>
                 <div className="flex items-center gap-5">
                   <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg bg-white/20"><Briefcase size={24} /></div>
                   <div><h4 className="text-base font-black tracking-tight">{selectedFolder?.name}</h4><p className="text-[9px] font-bold text-white/80 uppercase tracking-widest">{selectedFolder?.number} • {selectedFolder?.serviceType}</p></div>
