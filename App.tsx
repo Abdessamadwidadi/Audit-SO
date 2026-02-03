@@ -12,7 +12,7 @@ import { exportSimpleByFolder, exportSummaryCabinet } from './services/csvServic
 import { 
   LayoutDashboard, Users, FolderOpen, LogOut, 
   PlusCircle, Loader2, Trash2, Table, Edit3, 
-  RefreshCw, FileSpreadsheet, Layers, ShieldCheck, UserCircle, Search, CheckSquare, Square, Sparkles, Menu, X as XIcon
+  RefreshCw, FileSpreadsheet, Layers, ShieldCheck, UserCircle, Search, CheckSquare, Square, Sparkles, Menu, X as XIcon, Plus
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -527,7 +527,7 @@ const App: React.FC = () => {
             <div className="space-y-4">
               <div className="flex flex-wrap justify-between items-center gap-3">
                 <div className="flex gap-2">
-                  {selectedEntryIds.size > 0 && (
+                  {selectedEntryIds.size > 0 && isAdminOrManager && (
                     <button onClick={handleBulkDelete} className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest shadow-lg hover:bg-rose-700 transition-all">
                       <Trash2 size={14}/> Supprimer ({selectedEntryIds.size})
                     </button>
@@ -576,7 +576,9 @@ const App: React.FC = () => {
                             <td className="p-6 text-center text-[#000000] text-base">{e.duration}h</td>
                             <td className="p-6 text-right whitespace-nowrap">
                               <button onClick={() => setEditEntry(e)} className="p-2 text-indigo-500 hover:bg-indigo-50 rounded-lg transition-all mr-2"><Edit3 size={16}/></button>
-                              <button onClick={async () => { if(confirm("Supprimer cette saisie ?")) { await supabase.from('time_entries').delete().eq('id', Number(e.id)); fetchData(); } }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={16}/></button>
+                              {isAdminOrManager && (
+                                <button onClick={async () => { if(confirm("Supprimer cette saisie ?")) { await supabase.from('time_entries').delete().eq('id', Number(e.id)); fetchData(); } }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-all"><Trash2 size={16}/></button>
+                              )}
                             </td>
                           </tr>
                         );
@@ -592,7 +594,16 @@ const App: React.FC = () => {
           )}
 
           {view === 'folders' && (
-            <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl overflow-hidden text-[#000000]">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-black uppercase tracking-tight text-slate-900">Gestion des Dossiers</h3>
+                {isAdminOrManager && (
+                  <button onClick={() => setEntityModal({type: 'folder'})} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-all flex items-center gap-2">
+                    <Plus size={16}/> Ajouter Dossier
+                  </button>
+                )}
+              </div>
+              <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl overflow-hidden text-[#000000]">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left min-w-[600px]">
                     <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b"><tr><th className="p-6">Numéro</th><th className="p-6">Libellé du Dossier</th><th className="p-6 text-center">Pôle</th><th className="p-6 text-right">Actions</th></tr></thead>
@@ -621,6 +632,7 @@ const App: React.FC = () => {
                   <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucun dossier trouvé</div>
                 )}
               </div>
+            </div>
           )}
 
           {view === 'dashboard' && <Dashboard entries={entries} folders={folders} attendance={[]} collaborators={collaborators} poleFilter={poleFilter} startDate={startDate} endDate={endDate} exerciceFilter={exerciceFilter} currentUser={currentUser} />}
@@ -640,25 +652,35 @@ const App: React.FC = () => {
             fetchData(); showNotif('success', 'Saisie enregistrée'); 
           }} onQuickFolderAdd={() => setView('folders')} />}
           {view === 'collabs' && (
-            <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl overflow-hidden text-[#000000]">
-               <div className="overflow-x-auto">
-                <table className="w-full text-left min-w-[500px]">
-                    <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b"><tr><th className="p-6">Nom</th><th className="p-6">Pôle</th><th className="p-6">Rôle</th><th className="p-6 text-right w-20">Actions</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredCollaboratorsList.map(c => (
-                          <tr key={c.id} className={`hover:bg-slate-50 text-[#000000] font-bold ${!c.isActive ? 'opacity-50 grayscale' : ''}`}>
-                            <td className="p-6 uppercase">{c.name}</td>
-                            <td className="p-6"><span className={`px-3 py-1 rounded-full text-[8px] font-black text-white ${c.department?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{c.department}</span></td>
-                            <td className="p-6 uppercase text-[10px] text-slate-500">{c.role}</td>
-                            <td className="p-6 text-right"><button onClick={() => setEntityModal({type: 'collab', data: c})} className="p-3 text-slate-400 hover:text-indigo-600 transition-all"><Edit3 size={18}/></button></td>
-                          </tr>
-                        ))}
-                    </tbody>
-                </table>
-               </div>
-               {filteredCollaboratorsList.length === 0 && (
-                  <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucun collaborateur trouvé</div>
+            <div className="space-y-4">
+               <div className="flex justify-between items-center">
+                <h3 className="text-xl font-black uppercase tracking-tight text-slate-900">Équipe & Collaborateurs</h3>
+                {isAdminOrManager && (
+                  <button onClick={() => setEntityModal({type: 'collab'})} className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-all flex items-center gap-2">
+                    <Plus size={16}/> Ajouter Collaborateur
+                  </button>
                 )}
+              </div>
+              <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-xl overflow-hidden text-[#000000]">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left min-w-[500px]">
+                      <thead className="bg-[#1e293b] text-[10px] font-black uppercase text-white border-b"><tr><th className="p-6">Nom</th><th className="p-6">Pôle</th><th className="p-6">Rôle</th><th className="p-6 text-right w-20">Actions</th></tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredCollaboratorsList.map(c => (
+                            <tr key={c.id} className={`hover:bg-slate-50 text-[#000000] font-bold ${!c.isActive ? 'opacity-50 grayscale' : ''}`}>
+                              <td className="p-6 uppercase">{c.name}</td>
+                              <td className="p-6"><span className={`px-3 py-1 rounded-full text-[8px] font-black text-white ${c.department?.toLowerCase() === 'audit' ? 'bg-[#0056b3]' : 'bg-orange-500'}`}>{c.department}</span></td>
+                              <td className="p-6 uppercase text-[10px] text-slate-500">{c.role}</td>
+                              <td className="p-6 text-right"><button onClick={() => setEntityModal({type: 'collab', data: c})} className="p-3 text-slate-400 hover:text-indigo-600 transition-all"><Edit3 size={18}/></button></td>
+                            </tr>
+                          ))}
+                      </tbody>
+                  </table>
+                </div>
+                {filteredCollaboratorsList.length === 0 && (
+                    <div className="p-20 text-center text-slate-400 font-black uppercase text-[10px] italic">Aucun collaborateur trouvé</div>
+                  )}
+              </div>
             </div>
           )}
         </div>
