@@ -12,15 +12,6 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: false,
-    chunkSizeWarningLimit: 3000,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'vendor': ['react', 'react-dom'],
-          'ui-libs': ['lucide-react', 'recharts'],
-          'data-libs': ['@supabase/supabase-js', 'xlsx']
-        }
-      }
-    }
+    chunkSizeWarningLimit: 3000
   }
 });
